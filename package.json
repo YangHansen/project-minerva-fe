@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@elysiajs/eden": "^1.4.9",
     "vue": "^3.5.39"
   },
   "devDependencies": {
