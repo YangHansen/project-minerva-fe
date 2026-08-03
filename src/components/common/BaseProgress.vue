@@ -1,0 +1,2 @@
+<script setup lang="ts">defineProps<{ value: number; label?: string }>()</script>
+<template><div><div v-if="label" class="mb-2 flex justify-between text-sm font-semibold"><span>{{ label }}</span><span>{{ value }}%</span></div><div class="h-2.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" :aria-valuenow="value" aria-valuemin="0" aria-valuemax="100"><div class="h-full rounded-full bg-gradient-to-r from-[#5b45f5] to-[#27a8f7] transition-all duration-500" :style="{ width: `${value}%` }" /></div></div></template>

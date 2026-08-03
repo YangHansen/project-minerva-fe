@@ -1,0 +1,25 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import LandingView from '../views/LandingView.vue'
+
+const router = createRouter({
+  history: createWebHistory(),
+  scrollBehavior: () => ({ top: 0 }),
+  routes: [
+    { path: '/', component: LandingView, meta: { title: 'Minerva - Find. Prepare. Succeed.' } },
+    { path: '/scholarships', component: () => import('../views/ScholarshipsView.vue'), meta: { title: 'Scholarships | Minerva' } },
+    { path: '/scholarships/:id', component: () => import('../views/ScholarshipDetailView.vue'), meta: { title: 'Scholarship details | Minerva' } },
+    { path: '/dashboard', component: () => import('../views/DashboardView.vue'), meta: { title: 'Dashboard | Minerva' } },
+    { path: '/checklist', component: () => import('../views/ChecklistView.vue'), meta: { title: 'Application checklist | Minerva' } },
+    { path: '/documents', component: () => import('../views/DocumentsView.vue'), meta: { title: 'Document review | Minerva' } },
+    { path: '/practice', component: () => import('../views/PracticeView.vue'), meta: { title: 'Practice | Minerva' } },
+    { path: '/mentors', component: () => import('../views/MentorsView.vue'), meta: { title: 'Mentors | Minerva' } },
+    { path: '/pricing', component: () => import('../views/PricingView.vue'), meta: { title: 'Pricing | Minerva' } },
+    { path: '/login', component: () => import('../views/LoginView.vue'), meta: { title: 'Log in | Minerva' } },
+    { path: '/register', component: () => import('../views/RegisterView.vue'), meta: { title: 'Create an account | Minerva' } },
+    { path: '/onboarding', component: () => import('../views/OnboardingView.vue'), meta: { title: 'Build your profile | Minerva' } },
+    { path: '/:pathMatch(.*)*', component: () => import('../views/NotFoundView.vue'), meta: { title: 'Page not found | Minerva' } },
+  ],
+})
+
+router.afterEach((to) => { document.title = String(to.meta.title ?? 'Minerva') })
+export default router

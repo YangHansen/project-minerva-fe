@@ -5,12 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "build": "vue-tsc -b && vite build && node scripts/prepare-sites.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@elysiajs/eden": "^1.4.9",
-    "vue": "^3.5.39"
+    "@fontsource-variable/nunito": "^5.3.0",
+    "@tailwindcss/vite": "^4.1.18",
+    "lucide-vue-next": "^0.468.0",
+    "pinia": "^3.0.3",
+    "tailwindcss": "^4.1.18",
+    "vue": "^3.5.39",
+    "vue-router": "^4.5.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
