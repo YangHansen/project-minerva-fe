@@ -15,13 +15,29 @@ const defaultChecklist: ChecklistItem[] = [
 
 const savedIds = ref<string[]>(read('minerva-saved', []))
 const selectedId = ref<string | null>(read('minerva-selected', null))
-const checklist = ref<ChecklistItem[]>(read('minerva-checklist', defaultChecklist))
+const legacyChecklist = read('minerva-checklist', defaultChecklist)
+const checklistsByScholarship = ref<Record<string, ChecklistItem[]>>(read('minerva-checklists', {}))
+if (selectedId.value && !checklistsByScholarship.value[selectedId.value]) checklistsByScholarship.value[selectedId.value] = legacyChecklist
+const checklist = computed(() => {
+  const scholarshipId = selectedId.value
+  if (!scholarshipId) return []
+  if (!checklistsByScholarship.value[scholarshipId]) {
+    checklistsByScholarship.value[scholarshipId] = defaultChecklist.map((item) => ({ ...item }))
+  }
+  return checklistsByScholarship.value[scholarshipId]
+})
 const profile = ref<UserProfile | null>(read('minerva-profile', null))
 const session = ref<MockSession | null>(read('minerva-session', null))
 const booking = ref<MentorBooking | null>(read('minerva-booking', null))
-const practiceResult = ref<PracticeResult | null>(read('minerva-practice', null))
-persist('minerva-saved', savedIds); persist('minerva-selected', selectedId); persist('minerva-checklist', checklist)
-persist('minerva-profile', profile); persist('minerva-session', session); persist('minerva-booking', booking); persist('minerva-practice', practiceResult)
+const legacyPracticeResult = read<PracticeResult | null>('minerva-practice', null)
+const practiceByScholarship = ref<Record<string, PracticeResult>>(read('minerva-practice-by-scholarship', {}))
+if (selectedId.value && legacyPracticeResult && !practiceByScholarship.value[selectedId.value]) practiceByScholarship.value[selectedId.value] = legacyPracticeResult
+const practiceResult = computed<PracticeResult | null>({
+  get: () => selectedId.value ? practiceByScholarship.value[selectedId.value] || null : null,
+  set: (value) => { if (selectedId.value && value) practiceByScholarship.value[selectedId.value] = value },
+})
+persist('minerva-saved', savedIds); persist('minerva-selected', selectedId); persist('minerva-checklists', checklistsByScholarship)
+persist('minerva-profile', profile); persist('minerva-session', session); persist('minerva-booking', booking); persist('minerva-practice-by-scholarship', practiceByScholarship)
 
 const toasts = ref<{ id: number; message: string; tone: 'success' | 'info' }[]>([])
 let toastId = 0
@@ -30,7 +46,7 @@ function toast(message: string, tone: 'success' | 'info' = 'success') {
 }
 
 export function useAppState() {
-  const progress = computed(() => Math.round((checklist.value.filter((item) => item.completed).length / checklist.value.length) * 100))
+  const progress = computed(() => checklist.value.length ? Math.round((checklist.value.filter((item) => item.completed).length / checklist.value.length) * 100) : 0)
   const toggleSaved = (id: string) => {
     savedIds.value = savedIds.value.includes(id) ? savedIds.value.filter((item) => item !== id) : [...savedIds.value, id]
     toast(savedIds.value.includes(id) ? 'Scholarship saved to your shortlist.' : 'Scholarship removed from saved items.', 'info')

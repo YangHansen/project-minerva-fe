@@ -1,17 +1,95 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { CheckCircle2, ChevronDown, ChevronRight, ExternalLink, FileText, Folder, FolderOpen, MoreHorizontal, Sparkles } from 'lucide-vue-next'
 import { getScholarship } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
-import BaseProgress from '../components/common/BaseProgress.vue'
-import { CalendarDays, CircleCheck, PartyPopper, FileQuestion, ExternalLink } from 'lucide-vue-next'
+import WorkspaceSidebar from '../components/dashboard/WorkspaceSidebar.vue'
+import WorkspaceTopbar from '../components/dashboard/WorkspaceTopbar.vue'
+
+type ViewMode = 'all' | 'open' | 'done'
+const view = ref<ViewMode>('all')
 const { checklist, progress, selectedId, toast } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
-const days = computed(() => selected.value ? Math.max(0,Math.ceil((new Date(selected.value.deadline).getTime()-Date.now())/86400000)) : 0)
+const days = computed(() => selected.value ? Math.max(0, Math.ceil((new Date(selected.value.deadline).getTime() - Date.now()) / 86400000)) : 0)
 const categories = computed(() => [...new Set(checklist.value.map((item) => item.category))])
-const markHave = (id:string) => { const item=checklist.value.find((entry)=>entry.id===id); if(item){item.completed=true; toast(`Marked ${item.title} as ready.`)} }
+const collapsedCategories = ref<string[]>([])
+const visibleItems = (category: string) => checklist.value.filter((item) => item.category === category && (
+  view.value === 'all' || (view.value === 'open' && !item.completed) || (view.value === 'done' && item.completed)
+))
+const toggleCategory = (category: string) => {
+  collapsedCategories.value = collapsedCategories.value.includes(category)
+    ? collapsedCategories.value.filter((item) => item !== category)
+    : [...collapsedCategories.value, category]
+}
+const isOpen = (category: string) => !collapsedCategories.value.includes(category)
+const markHave = (id: string) => {
+  const item = checklist.value.find((entry) => entry.id === id)
+  if (item) { item.completed = true; toast(`Marked ${item.title} as ready.`) }
+}
+const completeCount = computed(() => checklist.value.filter((item) => item.completed).length)
 </script>
-<template><main><section class="border-b border-slate-200 bg-gradient-to-b from-[#f6f4ff] to-white py-16"><div class="container"><p class="eyebrow">Stay organized</p><div class="mt-5 grid items-end gap-8 lg:grid-cols-[1fr_auto]"><div><h1 class="page-title">Your application checklist</h1><p class="mt-5 max-w-2xl text-lg leading-8 text-slate-500">Complete items using documents you already have. Preparation tools are optional and never required to mark progress.</p></div><div v-if="selected" class="card px-5 py-4"><p class="text-xs font-bold text-slate-400">Selected scholarship</p><p class="mt-1 font-extrabold text-[#17136b]">{{ selected.name }}</p></div></div></div></section>
-<section class="section pt-12"><div class="container max-w-4xl"><div v-if="progress === 100" class="mb-7 rounded-3xl bg-gradient-to-r from-emerald-500 to-teal-500 p-7 text-white"><PartyPopper :size="28"/><h2 class="mt-4 text-2xl font-extrabold">You’re application-ready!</h2><p class="mt-2 text-emerald-50">Every checklist item is marked complete. Review official requirements one final time before submitting.</p></div><div v-if="!selected" class="card mb-8 flex flex-col items-center p-10 text-center"><FileQuestion class="text-slate-300" :size="34"/><h2 class="mt-4 text-xl font-extrabold text-[#17136b]">Choose a scholarship to personalize this checklist</h2><p class="mt-2 text-sm text-slate-500">You can still use the standard checklist below.</p><RouterLink to="/scholarships" class="btn-primary mt-5">Select a scholarship</RouterLink></div>
-<div class="card p-6 sm:p-8"><div class="grid gap-5 sm:grid-cols-[1fr_auto] sm:items-end"><div><BaseProgress :value="progress" label="Overall progress"/><p class="mt-3 text-sm text-slate-500">{{ checklist.filter(i=>i.completed).length }} of {{ checklist.length }} tasks ready</p></div><div v-if="selected" class="rounded-2xl bg-violet-50 px-5 py-4"><div class="flex items-center gap-2 text-xs font-bold text-[#5b45f5]"><CalendarDays :size="15"/>Deadline countdown</div><p class="mt-2 text-2xl font-extrabold text-[#17136b]">{{ days }} days</p></div></div></div>
-<section v-for="category in categories" :key="category" class="mt-9"><h2 class="mb-4 text-sm font-extrabold uppercase tracking-[.14em] text-slate-400">{{ category }}</h2><div class="grid gap-3"><article v-for="item in checklist.filter(entry=>entry.category===category)" :key="item.id" class="card p-5"><div class="flex items-start gap-4"><label class="mt-1 cursor-pointer"><input v-model="item.completed" type="checkbox" class="size-5 accent-[#5b45f5]" :aria-label="`Mark ${item.title} complete`"></label><div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><h3 class="font-extrabold text-[#17136b]" :class="item.completed && 'line-through opacity-60'">{{ item.title }}</h3><span class="tag">{{ item.required ? 'Required' : 'Optional' }}</span></div><textarea v-model="item.notes" class="field mt-3 min-h-20 resize-y text-sm" :aria-label="`Notes for ${item.title}`" placeholder="Add a private note for this item..."></textarea><div class="mt-3 flex flex-wrap gap-3"><button class="text-xs font-bold text-[#5b45f5]" @click="markHave(item.id)">I already have this</button><RouterLink v-if="['cv','essay','ielts'].includes(item.id)" :to="item.id==='ielts'?'/practice':'/documents'" class="inline-flex items-center gap-1 text-xs font-bold text-slate-500">Optional preparation help <ExternalLink :size="12"/></RouterLink></div></div><CircleCheck v-if="item.completed" class="text-emerald-500" :size="21"/></div></article></div></section>
-<p class="mt-8 text-center text-xs text-slate-400">Progress and notes are stored only in this browser.</p></div></section></main></template>
+
+<template>
+  <main class="workspace-shell">
+    <WorkspaceSidebar active="checklist"/>
+    <div class="workspace-main">
+      <WorkspaceTopbar title="Application checklist" subtitle="Every scholarship keeps its own requirements folder."/>
+      <div class="workspace-content">
+        <section v-if="!selected" class="notion-select-state">
+          <div class="notion-select-icon"><Folder :size="31"/></div>
+          <p class="text-xs font-extrabold uppercase tracking-[.16em] text-[#5b45f5]">Application workspace</p>
+          <h1>Select a scholarship first</h1>
+          <p>Each saved scholarship opens a separate checklist folder, so documents and progress never blend together.</p>
+          <RouterLink to="/scholarships" class="btn-primary">Browse scholarships</RouterLink>
+        </section>
+
+        <article v-else class="notion-canvas notion-folder-canvas">
+          <div class="notion-cover"><div class="notion-page-icon"><FileText :size="30"/></div></div>
+          <div class="px-5 pb-8 sm:px-10">
+            <div class="notion-folder-breadcrumb">
+              <span>Scholarships</span><ChevronRight :size="14"/><strong>{{ selected.name }}</strong><ChevronRight :size="14"/><span>Checklist</span>
+            </div>
+            <div class="mt-5 flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p class="text-xs font-extrabold uppercase tracking-[.16em] text-[#5b45f5]">Scholarship folder</p>
+                <h1 class="mt-3 text-4xl font-extrabold tracking-[-.045em] text-[#17136b]">{{ selected.name }} checklist</h1>
+                <p class="mt-3 max-w-2xl text-sm leading-7 text-slate-500">{{ selected.provider }} · {{ selected.country }} · {{ days }} days left · {{ progress }}% complete</p>
+              </div>
+              <button class="notion-more" aria-label="Checklist options"><MoreHorizontal :size="20"/></button>
+            </div>
+
+            <div v-if="progress===100" class="notion-callout mt-7 bg-emerald-50 text-emerald-950">
+              <CheckCircle2 :size="20" class="text-emerald-500"/><div><p class="font-extrabold">Application-ready checklist</p><p class="mt-1 text-xs leading-5 text-emerald-800">Every item is marked done. Review the official provider requirements before submitting.</p></div>
+            </div>
+            <div v-else class="notion-callout mt-7">
+              <Sparkles :size="20" class="text-[#5b45f5]"/><div><p class="font-extrabold text-[#17136b]">{{ completeCount }} of {{ checklist.length }} tasks are ready</p><p class="mt-1 text-xs leading-5 text-slate-500">Your progress is saved only inside this scholarship folder.</p></div>
+            </div>
+
+            <div class="mt-8 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4">
+              <button v-for="item in [{id:'all',label:'All tasks'},{id:'open',label:'To do'},{id:'done',label:'Complete'}]" :key="item.id" class="notion-view" :class="view===item.id&&'active'" @click="view=item.id as ViewMode">{{ item.label }}</button>
+              <span class="ml-auto text-xs font-semibold text-slate-400">{{ completeCount }}/{{ checklist.length }} complete</span>
+            </div>
+
+            <div class="mt-5">
+              <section v-for="category in categories" :key="category" class="notion-folder-section">
+                <button class="notion-folder-row" :aria-expanded="isOpen(category)" @click="toggleCategory(category)">
+                  <ChevronDown :size="16" :class="!isOpen(category)&&'-rotate-90'"/>
+                  <FolderOpen v-if="isOpen(category)" :size="19" class="text-[#5b45f5]"/><Folder v-else :size="19" class="text-[#5b45f5]"/>
+                  <span class="notion-folder-name">{{ category }}</span><span class="ml-auto text-xs font-semibold text-slate-400">{{ visibleItems(category).length }} tasks</span>
+                </button>
+                <div v-if="isOpen(category)" class="notion-db">
+                  <article v-for="item in visibleItems(category)" :key="item.id" class="notion-db-row">
+                    <label class="flex min-w-0 flex-1 cursor-pointer items-start gap-3"><input v-model="item.completed" type="checkbox" class="notion-checkbox mt-0.5" :aria-label="`Mark ${item.title} complete`"><span class="min-w-0"><span class="block text-sm font-bold text-[#17136b]" :class="item.completed&&'line-through text-slate-400'">{{ item.title }}</span><span class="mt-1 flex flex-wrap gap-2"><span class="notion-pill" :class="item.required?'required':'optional'">{{ item.required ? 'Required' : 'Optional' }}</span><RouterLink v-if="['cv','essay','ielts'].includes(item.id)" :to="item.id==='ielts'?'/test-prep':'/documents'" class="inline-flex items-center gap-1 text-[11px] font-bold text-[#5b45f5]">Preparation help <ExternalLink :size="11"/></RouterLink></span></span></label>
+                    <div class="flex items-center gap-2"><button v-if="!item.completed" class="notion-inline-action" @click="markHave(item.id)">I have this</button><CheckCircle2 v-else :size="18" class="text-emerald-500"/></div>
+                    <textarea v-model="item.notes" class="notion-note" :aria-label="`Notes for ${item.title}`" placeholder="Add a note…"/>
+                  </article>
+                  <div v-if="!visibleItems(category).length" class="px-3 py-5 text-center text-xs text-slate-400">No {{ view==='open' ? 'open' : 'completed' }} tasks in this folder.</div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </main>
+</template>
