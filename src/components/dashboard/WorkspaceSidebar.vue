@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { LayoutDashboard, Search, ClipboardCheck, FileText, BookOpenCheck, MessageSquareText, Users, CreditCard, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-vue-next'
+import { FolderKanban, Search, ClipboardCheck, FileText, BookOpenCheck, MessageSquareText, Users, CreditCard, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-vue-next'
 import { useAppState } from '../../composables/useAppState'
 
 defineProps<{ active: 'overview' | 'discover' | 'checklist' | 'documents' | 'test' | 'interview' | 'mentors' }>()
@@ -11,7 +11,7 @@ const router = useRouter()
 const { session, toast } = useAppState()
 const signOut = () => { session.value = null; toast('You have signed out of this demo.', 'info'); router.push('/') }
 const links = [
-  { id: 'overview', label: 'Overview', to: '/dashboard', icon: LayoutDashboard },
+  { id: 'overview', label: 'My scholarships', to: '/dashboard', icon: FolderKanban },
   { id: 'discover', label: 'Discover', to: '/scholarships', icon: Search },
   { id: 'checklist', label: 'Checklist', to: '/checklist', icon: ClipboardCheck },
   { id: 'documents', label: 'Documents', to: '/documents', icon: FileText },
