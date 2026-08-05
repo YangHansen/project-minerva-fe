@@ -1,95 +1,109 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { CheckCircle2, ChevronDown, ChevronRight, ExternalLink, FileText, Folder, FolderOpen, MoreHorizontal, Sparkles } from 'lucide-vue-next'
+import { CalendarDays, Check, Edit3, Folder, Globe2, Plus, Trash2, X } from 'lucide-vue-next'
+import type { ChecklistItem, ChecklistStatus } from '../types'
 import { getScholarship } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
 import WorkspaceSidebar from '../components/dashboard/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/dashboard/WorkspaceTopbar.vue'
 
-type ViewMode = 'all' | 'open' | 'done'
-const view = ref<ViewMode>('all')
-const { checklist, progress, selectedId, toast } = useAppState()
+const { checklist, progress, selectedId, scholarshipNotes, addChecklistItem, deleteChecklistItem, toast } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
 const days = computed(() => selected.value ? Math.max(0, Math.ceil((new Date(selected.value.deadline).getTime() - Date.now()) / 86400000)) : 0)
-const categories = computed(() => [...new Set(checklist.value.map((item) => item.category))])
-const collapsedCategories = ref<string[]>([])
-const visibleItems = (category: string) => checklist.value.filter((item) => item.category === category && (
-  view.value === 'all' || (view.value === 'open' && !item.completed) || (view.value === 'done' && item.completed)
-))
-const toggleCategory = (category: string) => {
-  collapsedCategories.value = collapsedCategories.value.includes(category)
-    ? collapsedCategories.value.filter((item) => item !== category)
-    : [...collapsedCategories.value, category]
+const statusSections: Array<{ id: ChecklistStatus; label: string }> = [
+  { id: 'pending', label: 'Pending' }, { id: 'in_progress', label: 'In Progress' }, { id: 'done', label: 'Done' },
+]
+const tasksFor = (status: ChecklistStatus) => checklist.value.filter((item) => item.status === status)
+
+const notesEditing = ref(false)
+const notesDraft = ref('')
+const startNotes = () => { notesDraft.value = selectedId.value ? scholarshipNotes.value[selectedId.value] || '' : ''; notesEditing.value = true }
+const saveNotes = () => {
+  if (!selectedId.value) return
+  scholarshipNotes.value[selectedId.value] = notesDraft.value.trim()
+  notesEditing.value = false
+  toast('Scholarship notes saved.')
 }
-const isOpen = (category: string) => !collapsedCategories.value.includes(category)
-const markHave = (id: string) => {
-  const item = checklist.value.find((entry) => entry.id === id)
-  if (item) { item.completed = true; toast(`Marked ${item.title} as ready.`) }
+
+const modalOpen = ref(false)
+const editingId = ref<string | null>(null)
+const form = ref<{ title: string; description: string; status: ChecklistStatus }>({ title: '', description: '', status: 'pending' })
+const openCreate = () => { editingId.value = null; form.value = { title: '', description: '', status: 'pending' }; modalOpen.value = true }
+const openEdit = (item: ChecklistItem) => { editingId.value = item.id; form.value = { title: item.title, description: item.description, status: item.status }; modalOpen.value = true }
+const closeModal = () => { modalOpen.value = false }
+const saveTask = () => {
+  if (!selectedId.value || !form.value.title.trim()) return
+  if (editingId.value) {
+    const item = checklist.value.find((entry) => entry.id === editingId.value)
+    if (item) Object.assign(item, { title: form.value.title.trim(), description: form.value.description.trim(), status: form.value.status })
+    toast('Checklist item updated.')
+  } else {
+    addChecklistItem(selectedId.value, { title: form.value.title.trim(), description: form.value.description.trim(), status: form.value.status, category: 'Custom', required: true, notes: '' })
+    toast('Checklist item added.')
+  }
+  closeModal()
 }
-const completeCount = computed(() => checklist.value.filter((item) => item.completed).length)
+const removeTask = (item: ChecklistItem) => {
+  if (!selectedId.value || !window.confirm(`Delete “${item.title}”? This cannot be undone.`)) return
+  deleteChecklistItem(selectedId.value, item.id)
+  toast('Checklist item deleted.', 'info')
+}
 </script>
 
 <template>
   <main class="workspace-shell">
-    <WorkspaceSidebar active="checklist"/>
+    <WorkspaceSidebar active="checklist" />
     <div class="workspace-main">
-      <WorkspaceTopbar title="Application checklist" subtitle="Every scholarship keeps its own requirements folder."/>
+      <WorkspaceTopbar title="Application checklist" subtitle="Every scholarship keeps its own requirements folder." />
       <div class="workspace-content">
         <section v-if="!selected" class="notion-select-state">
-          <div class="notion-select-icon"><Folder :size="31"/></div>
-          <p class="text-xs font-extrabold uppercase tracking-[.16em] text-[#5b45f5]">Application workspace</p>
-          <h1>Select a scholarship first</h1>
-          <p>Each saved scholarship opens a separate checklist folder, so documents and progress never blend together.</p>
+          <div class="notion-select-icon"><Folder :size="31" /></div><h1>Select a scholarship first</h1>
+          <p>Choose a saved scholarship before managing its private application checklist.</p>
           <RouterLink to="/scholarships" class="btn-primary">Browse scholarships</RouterLink>
         </section>
 
-        <article v-else class="notion-canvas notion-folder-canvas">
-          <div class="notion-cover"><div class="notion-page-icon"><FileText :size="30"/></div></div>
-          <div class="px-5 pb-8 sm:px-10">
-            <div class="notion-folder-breadcrumb">
-              <span>Scholarships</span><ChevronRight :size="14"/><strong>{{ selected.name }}</strong><ChevronRight :size="14"/><span>Checklist</span>
-            </div>
-            <div class="mt-5 flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p class="text-xs font-extrabold uppercase tracking-[.16em] text-[#5b45f5]">Scholarship folder</p>
-                <h1 class="mt-3 text-4xl font-extrabold tracking-[-.045em] text-[#17136b]">{{ selected.name }} checklist</h1>
-                <p class="mt-3 max-w-2xl text-sm leading-7 text-slate-500">{{ selected.provider }} · {{ selected.country }} · {{ days }} days left · {{ progress }}% complete</p>
-              </div>
-              <button class="notion-more" aria-label="Checklist options"><MoreHorizontal :size="20"/></button>
-            </div>
+        <section v-else class="checklist-workspace">
+          <header class="workspace-scholar-head">
+            <div><p class="workspace-kicker">Active scholarship</p><h1>{{ selected.name }}</h1><p>{{ selected.provider }} · {{ selected.country }}</p><div class="scholarship-tags"><span><Globe2 :size="13" />{{ selected.country }}</span><span>{{ selected.fundingType }}</span></div></div>
+            <div class="deadline-card"><span>Deadline</span><strong><CalendarDays :size="17" />{{ selected.deadline }}</strong><small>{{ days }} days left</small></div>
+          </header>
 
-            <div v-if="progress===100" class="notion-callout mt-7 bg-emerald-50 text-emerald-950">
-              <CheckCircle2 :size="20" class="text-emerald-500"/><div><p class="font-extrabold">Application-ready checklist</p><p class="mt-1 text-xs leading-5 text-emerald-800">Every item is marked done. Review the official provider requirements before submitting.</p></div>
-            </div>
-            <div v-else class="notion-callout mt-7">
-              <Sparkles :size="20" class="text-[#5b45f5]"/><div><p class="font-extrabold text-[#17136b]">{{ completeCount }} of {{ checklist.length }} tasks are ready</p><p class="mt-1 text-xs leading-5 text-slate-500">Your progress is saved only inside this scholarship folder.</p></div>
-            </div>
+          <div class="checklist-progress-strip"><span>{{ checklist.filter((item) => item.status === 'done').length }} of {{ checklist.length }} requirements ready</span><strong>{{ progress }}%</strong><div><i :style="{ width: `${progress}%` }" /></div></div>
 
-            <div class="mt-8 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4">
-              <button v-for="item in [{id:'all',label:'All tasks'},{id:'open',label:'To do'},{id:'done',label:'Complete'}]" :key="item.id" class="notion-view" :class="view===item.id&&'active'" @click="view=item.id as ViewMode">{{ item.label }}</button>
-              <span class="ml-auto text-xs font-semibold text-slate-400">{{ completeCount }}/{{ checklist.length }} complete</span>
-            </div>
+          <section class="scholarship-notes-card">
+            <div class="notes-title"><h2>Notes</h2><button v-if="!notesEditing" aria-label="Edit scholarship notes" @click="startNotes"><Edit3 :size="20" /></button></div>
+            <template v-if="notesEditing"><textarea v-model="notesDraft" autofocus placeholder="Add priorities, official requirements, and reminders for this scholarship." /><div class="notes-actions"><button class="btn-secondary" @click="notesEditing = false">Cancel</button><button class="btn-primary" @click="saveNotes"><Check :size="16" />Save notes</button></div></template>
+            <template v-else><p>{{ scholarshipNotes[selected.id] || 'Add priorities, official requirements, and reminders for this scholarship.' }}</p></template>
+          </section>
 
-            <div class="mt-5">
-              <section v-for="category in categories" :key="category" class="notion-folder-section">
-                <button class="notion-folder-row" :aria-expanded="isOpen(category)" @click="toggleCategory(category)">
-                  <ChevronDown :size="16" :class="!isOpen(category)&&'-rotate-90'"/>
-                  <FolderOpen v-if="isOpen(category)" :size="19" class="text-[#5b45f5]"/><Folder v-else :size="19" class="text-[#5b45f5]"/>
-                  <span class="notion-folder-name">{{ category }}</span><span class="ml-auto text-xs font-semibold text-slate-400">{{ visibleItems(category).length }} tasks</span>
-                </button>
-                <div v-if="isOpen(category)" class="notion-db">
-                  <article v-for="item in visibleItems(category)" :key="item.id" class="notion-db-row">
-                    <label class="flex min-w-0 flex-1 cursor-pointer items-start gap-3"><input v-model="item.completed" type="checkbox" class="notion-checkbox mt-0.5" :aria-label="`Mark ${item.title} complete`"><span class="min-w-0"><span class="block text-sm font-bold text-[#17136b]" :class="item.completed&&'line-through text-slate-400'">{{ item.title }}</span><span class="mt-1 flex flex-wrap gap-2"><span class="notion-pill" :class="item.required?'required':'optional'">{{ item.required ? 'Required' : 'Optional' }}</span><RouterLink v-if="['cv','essay','ielts'].includes(item.id)" :to="item.id==='ielts'?'/test-prep':'/documents'" class="inline-flex items-center gap-1 text-[11px] font-bold text-[#5b45f5]">Preparation help <ExternalLink :size="11"/></RouterLink></span></span></label>
-                    <div class="flex items-center gap-2"><button v-if="!item.completed" class="notion-inline-action" @click="markHave(item.id)">I have this</button><CheckCircle2 v-else :size="18" class="text-emerald-500"/></div>
-                    <textarea v-model="item.notes" class="notion-note" :aria-label="`Notes for ${item.title}`" placeholder="Add a note…"/>
-                  </article>
-                  <div v-if="!visibleItems(category).length" class="px-3 py-5 text-center text-xs text-slate-400">No {{ view==='open' ? 'open' : 'completed' }} tasks in this folder.</div>
-                </div>
-              </section>
+          <div class="checklist-toolbar"><div><p class="workspace-muted-label">Application tasks</p><span>Move each requirement through your workflow.</span></div><button class="btn-primary" @click="openCreate"><Plus :size="17" />Add task</button></div>
+
+          <section v-for="section in statusSections" :key="section.id" class="task-status-section">
+            <div class="task-section-title"><h2>{{ section.label }}</h2><span>{{ tasksFor(section.id).length }}</span></div>
+            <div v-if="tasksFor(section.id).length" class="task-list">
+              <article v-for="item in tasksFor(section.id)" :key="item.id" class="task-row">
+                <button class="task-state-dot" :class="item.status" :aria-label="`Change status for ${item.title}`" @click="item.status = item.status === 'pending' ? 'in_progress' : item.status === 'in_progress' ? 'done' : 'pending'"><Check v-if="item.status === 'done'" :size="14" /></button>
+                <div><h3>{{ item.title }}</h3><p>{{ item.description }}</p></div>
+                <span class="notion-pill" :class="item.required ? 'required' : 'optional'">{{ item.required ? 'Required' : 'Optional' }}</span>
+                <div class="task-actions"><button :aria-label="`Edit ${item.title}`" @click="openEdit(item)"><Edit3 :size="19" /></button><button class="delete" :aria-label="`Delete ${item.title}`" @click="removeTask(item)"><Trash2 :size="19" /></button></div>
+              </article>
             </div>
-          </div>
-        </article>
+            <div v-else class="task-empty">No tasks in {{ section.label.toLowerCase() }}.</div>
+          </section>
+        </section>
       </div>
     </div>
+
+    <Transition name="modal">
+      <div v-if="modalOpen" class="workspace-modal-backdrop" @click.self="closeModal">
+        <form class="workspace-modal" @submit.prevent="saveTask">
+          <div class="workspace-modal-title"><div><p class="workspace-kicker">Checklist editor</p><h2>{{ editingId ? `Edit ${form.title || 'task'}` : 'Add checklist item' }}</h2></div><button type="button" aria-label="Close" @click="closeModal"><X :size="20" /></button></div>
+          <label class="field-label">Item title<input v-model="form.title" class="field" required placeholder="e.g. Upload passport copy" /></label>
+          <label class="field-label">Description<textarea v-model="form.description" class="field min-h-28 resize-y" placeholder="Describe what must be completed." /></label>
+          <label class="field-label">Status<select v-model="form.status" class="field"><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="done">Done</option></select></label>
+          <div class="workspace-modal-actions"><button type="button" class="btn-secondary" @click="closeModal">Cancel</button><button class="btn-primary" type="submit">Save changes</button></div>
+        </form>
+      </div>
+    </Transition>
   </main>
 </template>

@@ -21,8 +21,53 @@ export interface Scholarship {
   applicationUrl: string; requiredDocuments: string[]; matchPercentage: number; featured: boolean
 }
 
-export interface ChecklistItem { id: string; title: string; category: string; required: boolean; completed: boolean; notes: string }
-export interface DocumentReview { type: 'cv' | 'essay'; score: number; summary: string; suggestions: string[] }
+export type ChecklistStatus = 'pending' | 'in_progress' | 'done'
+export interface ChecklistItem {
+  id: string
+  title: string
+  description: string
+  category: string
+  required: boolean
+  status: ChecklistStatus
+  notes: string
+}
+
+export type DocumentKind = 'cv' | 'essay' | 'personal' | 'purpose' | 'study' | 'research' | 'transcript' | 'custom'
+export type DocumentStatus = 'missing' | 'draft' | 'ready'
+export interface DocumentVersion { id: string; label: string; content: string; createdAt: string }
+export interface DocumentSuggestion {
+  id: string
+  title: string
+  detail: string
+  replacement: string
+  tone: 'purple' | 'yellow' | 'blue' | 'green'
+  dismissed?: boolean
+  accepted?: boolean
+}
+export interface DocumentReview {
+  overall: number
+  clarity: number
+  grammar: number
+  structure: number
+  impact: number
+  summary: string
+  suggestions: DocumentSuggestion[]
+  reviewedAt: string
+}
+export interface ScholarshipDocument {
+  id: string
+  kind: DocumentKind
+  title: string
+  description: string
+  category: string
+  prompt: string
+  content: string
+  uploadName: string
+  status: DocumentStatus
+  updatedAt: string
+  versions: DocumentVersion[]
+  review?: DocumentReview
+}
 export interface PracticeResult { type: string; score: number; completedAt: string; explanation: string }
 export interface Mentor { id: string; name: string; initials: string; expertise: string; scholarshipExperience: string; services: string[]; sessionPrice: string; availableTimes: string[]; rating: number; biography: string }
 export interface MentorBooking { mentorId: string; mentorName: string; service: string; date: string; time: string; notes: string }
