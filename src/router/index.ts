@@ -1,5 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LandingView from '../views/LandingView.vue'
+import { useAppState } from '../composables/useAppState'
+
+const { token } = useAppState()
 
 const router = createRouter({
   history: createWebHistory(),
@@ -20,10 +23,18 @@ const router = createRouter({
     { path: '/pricing', component: () => import('../views/PricingView.vue'), meta: { title: 'Pricing | Minerva' } },
     { path: '/login', component: () => import('../views/LoginView.vue'), meta: { title: 'Log in | Minerva' } },
     { path: '/register', component: () => import('../views/RegisterView.vue'), meta: { title: 'Create an account | Minerva' } },
+    { path: '/reset-password/:token', component: () => import('../views/ResetPasswordView.vue'), meta: { title: 'Reset password | Minerva' } },
     { path: '/onboarding', component: () => import('../views/OnboardingView.vue'), meta: { title: 'Build your profile | Minerva' } },
     { path: '/:pathMatch(.*)*', component: () => import('../views/NotFoundView.vue'), meta: { title: 'Page not found | Minerva' } },
   ],
 })
 
 router.afterEach((to) => { document.title = String(to.meta.title ?? 'Minerva') })
+
+router.beforeEach((to) => {
+  if (to.meta.workspace && !token.value) {
+    return { path: '/login', query: { redirect: to.fullPath } }
+  }
+})
+
 export default router

@@ -9,10 +9,10 @@ const searchOpen = ref(false)
 const menuOpen = ref(false)
 const searchInput = ref<HTMLInputElement | null>(null)
 const router = useRouter()
-const { session, toast } = useAppState()
+const { signOut: clearSession, toast } = useAppState()
 
 const openSearch = async () => { searchOpen.value = true; await nextTick(); searchInput.value?.focus() }
-const signOut = () => { session.value = null; toast('You have signed out of this demo.', 'info'); router.push('/') }
+const signOut = () => { clearSession(); toast('You have signed out.', 'info'); router.push('/') }
 </script>
 
 <template>

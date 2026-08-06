@@ -1,5 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import type { ChecklistItem, ChecklistStatus, DocumentKind, MentorBooking, MockSession, PracticeResult, ScholarshipDocument, UserProfile } from '../types'
+import { setAuthToken } from '../api/client'
 
 function read<T>(key: string, fallback: T): T {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback } catch { return fallback }
@@ -86,6 +87,9 @@ const checklist = computed(() => {
   return ensureChecklist(scholarshipId)
 })
 const documents = computed(() => selectedId.value ? ensureDocuments(selectedId.value) : [])
+const token = ref<string | null>(read('minerva-token', null))
+setAuthToken(token.value)
+watch(token, (value) => setAuthToken(value))
 const profile = ref<UserProfile | null>(read('minerva-profile', null))
 const session = ref<MockSession | null>(read('minerva-session', null))
 const booking = ref<MentorBooking | null>(read('minerva-booking', null))
@@ -98,12 +102,22 @@ const practiceResult = computed<PracticeResult | null>({
 })
 persist('minerva-saved', savedIds); persist('minerva-selected', selectedId); persist('minerva-checklists', checklistsByScholarship)
 persist('minerva-scholarship-notes', scholarshipNotes); persist('minerva-documents', documentsByScholarship)
+persist('minerva-token', token)
 persist('minerva-profile', profile); persist('minerva-session', session); persist('minerva-booking', booking); persist('minerva-practice-by-scholarship', practiceByScholarship)
 
 const toasts = ref<{ id: number; message: string; tone: 'success' | 'info' }[]>([])
 let toastId = 0
 function toast(message: string, tone: 'success' | 'info' = 'success') {
   const id = ++toastId; toasts.value.push({ id, message, tone }); window.setTimeout(() => { toasts.value = toasts.value.filter((item) => item.id !== id) }, 3200)
+}
+
+function signIn(authToken: string, name: string, email: string) {
+  token.value = authToken
+  session.value = { name, email }
+}
+function signOut() {
+  token.value = null
+  session.value = null
 }
 
 export function useAppState() {
@@ -132,6 +146,7 @@ export function useAppState() {
     savedIds, selectedId, checklist, checklistsByScholarship, scholarshipNotes, documents, documentsByScholarship,
     profile, session, booking, practiceResult, progress, documentProgress, toasts, toast, toggleSaved, selectScholarship,
     getChecklist, getProgress, getDocuments, getDocument, addChecklistItem, deleteChecklistItem, addDocument,
+    token, signIn, signOut,
   }
 }
 
