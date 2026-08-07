@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import {
   ArrowRight, Bookmark, CalendarDays, CheckCircle2, FileText,
   FolderOpen, Globe2, MapPin,
@@ -9,25 +9,6 @@ import { scholarships } from '../data/scholarships'
 
 const activeFeature = ref(0)
 const activeDestination = ref('All')
-const partnerTrack = ref<HTMLElement | null>(null)
-let partnerAnimation: Animation | null = null
-
-onMounted(() => {
-  if (!partnerTrack.value || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-
-  partnerAnimation = partnerTrack.value.animate(
-    [
-      { transform: 'translate3d(0, 0, 0)' },
-      { transform: 'translate3d(-50%, 0, 0)' },
-    ],
-    { duration: 26000, iterations: Infinity, easing: 'linear' },
-  )
-})
-
-onUnmounted(() => partnerAnimation?.cancel())
-
-const pausePartnerMarquee = () => partnerAnimation?.pause()
-const playPartnerMarquee = () => partnerAnimation?.play()
 
 const features = [
   {
@@ -144,11 +125,12 @@ const visibleScholarships = computed(() => {
         <p class="text-[.68rem] font-black uppercase tracking-[.2em] text-slate-400">Trusted scholarship programs worldwide</p>
         <span class="h-px w-10 bg-violet-200" />
       </div>
-      <div class="overflow-hidden" @mouseenter="pausePartnerMarquee" @mouseleave="playPartnerMarquee">
-        <div ref="partnerTrack" class="flex w-max will-change-transform">
-          <img src="/scholarship-partners.png" alt="Chevening, MEXT, LPDP, Manaaki New Zealand, Fulbright, and Australia Awards" class="h-16 w-auto shrink-0 object-contain opacity-65 grayscale sm:h-24" />
-          <img src="/scholarship-partners.png" alt="" aria-hidden="true" class="h-16 w-auto shrink-0 object-contain opacity-65 grayscale sm:h-24" />
-        </div>
+      <div class="mx-auto w-[min(1320px,calc(100%-40px))]">
+        <img
+          src="/scholarship-partners.png"
+          alt="Chevening, Manaaki New Zealand, LPDP, MEXT, Fulbright, and Australia Awards"
+          class="mx-auto h-auto w-full object-contain opacity-75"
+        />
       </div>
     </section>
 
