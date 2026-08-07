@@ -1,0 +1,114 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { Check, CheckCircle2, Coins, CreditCard, LockKeyhole, Sparkles } from 'lucide-vue-next'
+import { useAppState } from '../composables/useAppState'
+import WorkspaceSidebar from '../components/dashboard/WorkspaceSidebar.vue'
+import WorkspaceTopbar from '../components/dashboard/WorkspaceTopbar.vue'
+
+const packs = [
+  { id: 'starter', name: 'Starter', tokens: 10, price: '$4.99', description: 'A focused boost for one application.', badge: '' },
+  { id: 'momentum', name: 'Momentum', tokens: 30, price: '$11.99', description: 'Great for an active application season.', badge: 'Most popular' },
+  { id: 'focus', name: 'Focus', tokens: 60, price: '$19.99', description: 'Extra support across several folders.', badge: '' },
+] as const
+
+const selectedPackId = ref<(typeof packs)[number]['id']>('momentum')
+const processing = ref(false)
+const complete = ref(false)
+const selectedPack = computed(() => packs.find((pack) => pack.id === selectedPackId.value) ?? packs[1])
+const { tokenBalance, addTokens } = useAppState()
+
+function purchaseTokens() {
+  if (processing.value) return
+  processing.value = true
+  window.setTimeout(() => {
+    addTokens(selectedPack.value.tokens)
+    complete.value = true
+    processing.value = false
+  }, 550)
+}
+</script>
+
+<template>
+  <main class="workspace-shell">
+    <WorkspaceSidebar active="payment" />
+    <div class="workspace-main">
+      <WorkspaceTopbar title="Tokens & payment" subtitle="Manage your tokens for optional Minerva preparation feedback." />
+
+      <div class="workspace-content">
+        <section class="mx-auto max-w-[1180px]">
+          <div class="grid gap-5 lg:grid-cols-[1.35fr_.85fr]">
+            <section class="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#241979] via-[#2d1e8e] to-[#1b126d] p-7 text-white shadow-[0_20px_40px_rgba(36,25,121,.2)] sm:p-8">
+              <div class="absolute -right-12 -top-16 size-48 rounded-full bg-white/10 blur-2xl" />
+              <div class="relative flex items-start justify-between gap-5">
+                <div>
+                  <span class="grid size-12 place-items-center rounded-2xl bg-white/15"><Coins :size="25" /></span>
+                  <p class="mt-7 text-[.68rem] font-black uppercase tracking-[.17em] text-violet-200">Tokens owned</p>
+                  <p class="mt-1 text-5xl font-black tracking-tight">{{ tokenBalance }}</p>
+                  <p class="mt-3 max-w-md text-sm leading-6 text-violet-100">Use tokens for optional AI writing reviews, tailored interview feedback, and focused preparation guidance.</p>
+                </div>
+                <span class="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-black">Minerva balance</span>
+              </div>
+            </section>
+
+            <section class="rounded-[28px] border border-violet-100 bg-white p-7 shadow-[0_12px_34px_rgba(61,51,137,.08)]">
+              <span class="grid size-11 place-items-center rounded-2xl bg-violet-50 text-[#5b45f5]"><Sparkles :size="21" /></span>
+              <h2 class="mt-5 text-xl font-black text-[#17136b]">Use tokens when it helps</h2>
+              <p class="mt-2 text-sm leading-6 text-slate-500">Your core scholarship workspace remains available without tokens.</p>
+              <ul class="mt-5 grid gap-3 text-sm font-bold text-slate-600">
+                <li class="flex gap-2"><Check :size="18" class="shrink-0 text-emerald-500" />AI writing feedback</li>
+                <li class="flex gap-2"><Check :size="18" class="shrink-0 text-emerald-500" />Interview response review</li>
+                <li class="flex gap-2"><Check :size="18" class="shrink-0 text-emerald-500" />Advanced preparation insights</li>
+              </ul>
+            </section>
+          </div>
+
+          <section class="mt-9">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p class="eyebrow">Add tokens</p>
+                <h1 class="mt-2 text-3xl font-black tracking-tight text-[#17136b]">Choose a token pack</h1>
+                <p class="mt-2 text-sm text-slate-500">Tokens are added immediately in this Minerva frontend demo.</p>
+              </div>
+              <span class="rounded-full bg-violet-50 px-4 py-2 text-xs font-black text-[#5b45f5]">Secure demo checkout</span>
+            </div>
+
+            <div class="mt-5 grid gap-4 md:grid-cols-3">
+              <button v-for="pack in packs" :key="pack.id" type="button" class="relative rounded-[24px] border-2 bg-white p-5 text-left transition" :class="selectedPackId === pack.id ? 'border-[#5b45f5] shadow-[0_14px_30px_rgba(91,69,245,.14)]' : 'border-slate-200 hover:border-violet-200'" @click="selectedPackId = pack.id">
+                <span v-if="pack.badge" class="absolute -top-3 left-5 rounded-full bg-[#5b45f5] px-3 py-1 text-[10px] font-black uppercase tracking-[.1em] text-white">{{ pack.badge }}</span>
+                <div class="flex items-start justify-between gap-3">
+                  <span class="grid size-10 place-items-center rounded-xl bg-violet-50 text-[#5b45f5]"><Coins :size="20" /></span>
+                  <span v-if="selectedPackId === pack.id" class="grid size-6 place-items-center rounded-full bg-[#5b45f5] text-white"><Check :size="15" /></span>
+                </div>
+                <p class="mt-5 text-lg font-black text-[#17136b]">{{ pack.name }}</p>
+                <p class="mt-1 text-sm text-slate-500">{{ pack.description }}</p>
+                <div class="mt-5 flex items-end justify-between"><strong class="text-2xl font-black text-[#17136b]">{{ pack.tokens }} <span class="text-sm">tokens</span></strong><span class="text-sm font-black text-[#5b45f5]">{{ pack.price }}</span></div>
+              </button>
+            </div>
+          </section>
+
+          <section class="mt-6 grid gap-5 lg:grid-cols-[1.25fr_.75fr]">
+            <form class="rounded-[26px] border border-slate-200 bg-white p-6 shadow-[0_12px_34px_rgba(61,51,137,.06)] sm:p-7" @submit.prevent="purchaseTokens">
+              <div class="flex items-center gap-3"><span class="grid size-10 place-items-center rounded-xl bg-violet-50 text-[#5b45f5]"><CreditCard :size="20" /></span><div><h2 class="font-black text-[#17136b]">Payment details</h2><p class="text-xs text-slate-500">A safe local checkout simulation.</p></div></div>
+              <div class="mt-6 grid gap-4 sm:grid-cols-2">
+                <label class="field-label sm:col-span-2">Cardholder name<input required class="field mt-2" placeholder="Name on card" /></label>
+                <label class="field-label sm:col-span-2">Card number<input required inputmode="numeric" class="field mt-2" placeholder="4242 4242 4242 4242" /></label>
+                <label class="field-label">Expiry date<input required class="field mt-2" placeholder="MM / YY" /></label>
+                <label class="field-label">CVC<input required inputmode="numeric" class="field mt-2" placeholder="123" /></label>
+              </div>
+              <p class="mt-5 flex items-center gap-2 text-xs leading-5 text-slate-500"><LockKeyhole :size="15" class="text-emerald-600" />No payment details are stored or sent. This is a frontend-only demonstration.</p>
+              <button class="btn-primary mt-6 w-full justify-center" type="submit" :disabled="processing"><CheckCircle2 v-if="complete" :size="18" />{{ processing ? 'Adding tokens…' : complete ? 'Tokens added — add another pack' : `Add ${selectedPack.tokens} tokens for ${selectedPack.price}` }}</button>
+            </form>
+
+            <aside class="rounded-[26px] bg-[#241979] p-6 text-white shadow-[0_16px_32px_rgba(36,25,121,.16)] sm:p-7">
+              <p class="text-[.68rem] font-black uppercase tracking-[.16em] text-violet-200">Order summary</p>
+              <div class="mt-6 flex items-center justify-between border-b border-white/15 pb-5"><div><p class="font-black">{{ selectedPack.name }} pack</p><p class="mt-1 text-sm text-violet-100">{{ selectedPack.tokens }} Minerva tokens</p></div><strong>{{ selectedPack.price }}</strong></div>
+              <div class="mt-5 flex items-center justify-between text-sm text-violet-100"><span>Current balance</span><strong class="text-white">{{ tokenBalance }} tokens</strong></div>
+              <div class="mt-3 flex items-center justify-between text-sm text-violet-100"><span>New balance</span><strong class="text-white">{{ tokenBalance + selectedPack.tokens }} tokens</strong></div>
+              <p class="mt-7 text-xs leading-5 text-violet-200">Tokens are assigned to your Minerva account and can be used across your scholarship folders.</p>
+            </aside>
+          </section>
+        </section>
+      </div>
+    </div>
+  </main>
+</template>

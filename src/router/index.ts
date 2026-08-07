@@ -17,10 +17,12 @@ const router = createRouter({
     { path: '/test-prep', component: () => import('../views/TestPrepView.vue'), meta: { title: 'Test Prep | Minerva', workspace: true } },
     { path: '/interview-prep', component: () => import('../views/InterviewPrepView.vue'), meta: { title: 'Interview Prep | Minerva', workspace: true } },
     { path: '/mentors', component: () => import('../views/MentorsView.vue'), meta: { title: 'Mentors | Minerva', workspace: true } },
+    { path: '/wishlist', component: () => import('../views/WishlistView.vue'), meta: { title: 'Wishlist | Minerva', workspace: true } },
+    { path: '/payment', component: () => import('../views/PaymentView.vue'), meta: { title: 'Tokens & payment | Minerva', workspace: true } },
     { path: '/pricing', component: () => import('../views/PricingView.vue'), meta: { title: 'Pricing | Minerva' } },
     { path: '/login', component: () => import('../views/LoginView.vue'), meta: { title: 'Log in | Minerva' } },
     { path: '/register', component: () => import('../views/RegisterView.vue'), meta: { title: 'Create an account | Minerva' } },
-    { path: '/onboarding', component: () => import('../views/OnboardingView.vue'), meta: { title: 'Build your profile | Minerva' } },
+    { path: '/onboarding', component: () => import('../views/OnboardingView.vue'), meta: { title: 'Build your profile | Minerva', fullscreen: true } },
     { path: '/:pathMatch(.*)*', component: () => import('../views/NotFoundView.vue'), meta: { title: 'Page not found | Minerva' } },
   ],
 })

@@ -17,15 +17,15 @@ const major = ref('')
 const funding = ref('')
 const sort = ref<'match' | 'deadline' | 'name'>('match')
 const route = useRoute()
-const { savedIds, session, profile } = useAppState()
+const { applicationIds, session, profile } = useAppState()
 
 onMounted(() => window.setTimeout(() => { loading.value = false }, 350))
 const countries = [...new Set(scholarships.map((item) => item.country))].sort()
 const levels = [...new Set(scholarships.map((item) => item.educationLevel))].sort()
 const majors = [...new Set(scholarships.map((item) => item.fieldOfStudy).filter((item) => item !== 'All fields'))].sort()
 const fundings = [...new Set(scholarships.map((item) => item.fundingType))].sort()
-const firstSetup = computed(() => Boolean(route.query.recommended) || Boolean(session.value && savedIds.value.length === 0))
-const profileSignals = computed(() => [profile.value?.destinationCountry, profile.value?.targetEducationLevel, profile.value?.fieldOfStudy].filter(Boolean) as string[])
+const firstSetup = computed(() => Boolean(route.query.recommended) || Boolean(session.value && applicationIds.value.length === 0))
+const showRecommendationHighlight = computed(() => Boolean(route.query.recommended))
 const personalizedScore = (item: Scholarship) => {
   let score = item.matchPercentage
   const user = profile.value
@@ -55,7 +55,7 @@ const clear = () => { query.value = ''; country.value = ''; level.value = ''; ma
       <div class="workspace-content discover-workspace">
         <section v-if="firstSetup" class="recommendation-spotlight">
           <span class="recommendation-icon"><Sparkles :size="22" /></span>
-          <div><p class="workspace-kicker">AI recommendations</p><h1>Your best scholarship matches are ready</h1><p>Minerva has ordered the opportunities below using your destination, study level, major, and funding preferences.</p><div v-if="profileSignals.length" class="recommendation-signals"><span v-for="signal in profileSignals" :key="signal">{{ signal }}</span></div></div>
+          <div><p class="workspace-kicker">AI recommendations</p><h1>Your best scholarship matches are ready</h1><p>Minerva has ordered these opportunities around your saved profile. Adjust your answers any time to refresh the recommendations.</p><RouterLink to="/onboarding?return=/scholarships" class="recommendation-edit">Edit preferences</RouterLink></div>
           <div class="recommendation-count"><strong>{{ results.slice(0, 3).length }}</strong><span>top matches</span></div>
         </section>
 
@@ -77,7 +77,7 @@ const clear = () => { query.value = ''; country.value = ''; level.value = ''; ma
           </div>
 
           <div v-if="loading" class="scholarship-results-grid"><div v-for="n in 6" :key="n" class="h-[335px] animate-pulse rounded-3xl bg-slate-100" /></div>
-          <div v-else-if="results.length" class="scholarship-results-grid"><ScholarshipCard v-for="item in results" :key="item.id" :scholarship="item" /></div>
+          <div v-else-if="results.length" class="scholarship-results-grid"><ScholarshipCard v-for="(item, index) in results" :key="item.id" :scholarship="item" :recommended="showRecommendationHighlight && index < 3" selectable /></div>
           <div v-else class="discover-empty"><Search :size="34" /><h2>No scholarships match those filters</h2><p>Try clearing a filter or selecting a broader major.</p><button class="btn-primary" @click="clear">Clear all filters</button></div>
         </section>
       </div>

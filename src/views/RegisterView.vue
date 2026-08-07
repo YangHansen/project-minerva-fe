@@ -20,7 +20,7 @@ const submit = () => {
   errors.value = []
   if (name.value.trim().length < 2) errors.value.push('Enter your name.')
   if (!/^\S+@\S+\.\S+$/.test(email.value)) errors.value.push('Enter a valid email.')
-  if (password.value.length < 8) errors.value.push('Use at least 8 characters for your password.')
+  if (!/^(?=.*[A-Z])(?=.*\d).{8,}$/.test(password.value)) errors.value.push('Use 8+ characters with at least one capital letter and one number.')
   if (password.value !== confirm.value) errors.value.push('Passwords do not match.')
   if (!terms.value) errors.value.push('Accept the demo terms to continue.')
   if (errors.value.length) return
@@ -32,7 +32,7 @@ const submit = () => {
 <template>
   <main class="grid min-h-[calc(100vh-72px)] lg:grid-cols-2">
     <section class="hidden bg-gradient-to-br from-[#17136b] via-[#30209a] to-[#5b45f5] p-14 text-white lg:flex lg:flex-col lg:justify-between">
-      <img src="/minerva-logo.png" alt="Minerva" class="h-16 w-52 rounded-xl bg-white object-contain p-1" />
+      <img src="/minerva-logo.png" alt="Minerva" class="h-20 w-64 rounded-xl bg-white object-cover" />
       <div>
         <p class="text-sm font-extrabold uppercase tracking-[.2em] text-violet-200">Find. Prepare. Succeed.</p>
         <h1 class="mt-6 max-w-xl text-6xl font-extrabold leading-[1.02] tracking-[-.05em]">Your scholarship journey starts here.</h1>
@@ -50,8 +50,8 @@ const submit = () => {
         <div class="mt-7 grid gap-4">
           <label class="field-label">Full name<input v-model="name" class="field" autocomplete="name" placeholder="Your full name" /></label>
           <label class="field-label">Email<input v-model="email" type="email" class="field" autocomplete="email" placeholder="you@example.com" /></label>
-          <div class="grid gap-4 sm:grid-cols-2">
-            <label class="field-label">Password<span class="relative"><input v-model="password" :type="showPassword ? 'text' : 'password'" class="field pr-10" autocomplete="new-password" placeholder="8+ characters" /><button type="button" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></span></label>
+          <div class="grid gap-4">
+            <label class="field-label">Password<span class="relative"><input v-model="password" :type="showPassword ? 'text' : 'password'" class="field pr-10" autocomplete="new-password" placeholder="8+ characters, capital letter & number" /><button type="button" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></span><small class="font-medium text-slate-400">At least 8 characters with one capital letter and one number.</small></label>
             <label class="field-label">Confirm password<span class="relative"><input v-model="confirm" :type="showConfirm ? 'text' : 'password'" class="field pr-10" autocomplete="new-password" placeholder="Repeat password" /><button type="button" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" :aria-label="showConfirm ? 'Hide password' : 'Show password'" @click="showConfirm = !showConfirm"><EyeOff v-if="showConfirm" :size="17" /><Eye v-else :size="17" /></button></span></label>
           </div>
           <label class="mt-1 flex items-start gap-3 text-sm leading-6 text-slate-600"><input v-model="terms" type="checkbox" class="mt-1 accent-[#5b45f5]" /><span>I agree to the demo terms and understand no real account is created.</span></label>

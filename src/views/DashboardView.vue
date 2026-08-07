@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Archive, ArrowRight, CalendarDays, CheckCircle2, FileText, FolderOpen, Globe2, MoreVertical } from 'lucide-vue-next'
+import { ArrowRight, CalendarDays, CheckCircle2, FileText, FolderOpen, Globe2, MoreVertical, UserRoundCheck } from 'lucide-vue-next'
 import { getScholarship, scholarships } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
 import WorkspaceSidebar from '../components/dashboard/WorkspaceSidebar.vue'
@@ -10,10 +10,10 @@ import BaseProgress from '../components/common/BaseProgress.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { selectedId, savedIds, getChecklist, getProgress, getDocuments, selectScholarship } = useAppState()
+const { selectedId, applicationIds, getChecklist, getProgress, getDocuments, selectScholarship, booking } = useAppState()
 
 const folders = computed(() => {
-  const ids = [...new Set([selectedId.value, ...savedIds.value].filter((id): id is string => Boolean(id)))]
+  const ids = [...new Set([selectedId.value, ...applicationIds.value].filter((id): id is string => Boolean(id)))]
   return scholarships
     .filter((item) => ids.includes(item.id))
     .sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime())
@@ -57,11 +57,10 @@ onMounted(() => { if (!folders.value.length) router.replace('/scholarships?recom
             <div class="folder-rail-list">
               <button v-for="item in folders" :key="item.id" class="folder-rail-card" :class="item.id === selected.id && 'active'" @click="openFolder(item.id)">
                 <span class="folder-rail-icon"><FolderOpen :size="21" /></span>
-                <span class="min-w-0 flex-1"><strong>{{ item.name }}</strong><small>{{ item.provider }} · {{ item.country }}</small><small class="folder-date"><CalendarDays :size="13" />{{ item.deadline }}</small></span>
+                <span class="min-w-0 flex-1"><strong>{{ item.name }}</strong><small>{{ item.provider }} · {{ item.country }}</small><span class="folder-date inline-flex w-fit items-center gap-1 whitespace-nowrap"><CalendarDays :size="14" class="shrink-0" /><time>{{ item.deadline }}</time></span></span>
                 <MoreVertical :size="17" class="folder-more" />
               </button>
             </div>
-            <RouterLink to="/scholarships" class="folder-archive"><Archive :size="17" />Discover more scholarships</RouterLink>
           </aside>
 
           <article class="active-scholarship-panel">
@@ -104,6 +103,11 @@ onMounted(() => { if (!folders.value.length) router.replace('/scholarships?recom
               <section class="recent-feedback">
                 <div><p>Recent review feedback</p><span v-if="recentReview">{{ recentReview.review?.summary }}</span><span v-else>Open a document and run AI Review to see focused feedback here.</span></div>
                 <RouterLink :to="recentReview ? `/documents/${recentReview.id}` : '/documents'">{{ recentReview ? 'View feedback' : 'Review a document' }} <ArrowRight :size="15" /></RouterLink>
+              </section>
+              <section v-if="booking" class="mentor-booking-strip">
+                <span class="mentor-booking-icon"><UserRoundCheck :size="22" /></span>
+                <div><p>Upcoming mentor session</p><strong>{{ booking.mentorName }} · {{ booking.service }}</strong><span>{{ booking.date }} at {{ booking.time }}<template v-if="booking.notes"> · {{ booking.notes }}</template></span></div>
+                <RouterLink to="/mentors">Manage booking <ArrowRight :size="15" /></RouterLink>
               </section>
             </div>
           </article>

@@ -52,6 +52,7 @@ function normalizeChecklist(items: unknown): ChecklistItem[] {
 
 const savedIds = ref<string[]>(read('minerva-saved', []))
 const selectedId = ref<string | null>(read('minerva-selected', null))
+const applicationIds = ref<string[]>(read('minerva-applications', [...new Set([selectedId.value, ...savedIds.value].filter((id): id is string => Boolean(id)))]))
 const legacyChecklist = normalizeChecklist(read('minerva-checklist', defaultChecklist))
 const storedChecklists = read<Record<string, unknown>>('minerva-checklists', {})
 const checklistsByScholarship = ref<Record<string, ChecklistItem[]>>(Object.fromEntries(Object.entries(storedChecklists).map(([id, items]) => [id, normalizeChecklist(items)])))
@@ -89,6 +90,7 @@ const documents = computed(() => selectedId.value ? ensureDocuments(selectedId.v
 const profile = ref<UserProfile | null>(read('minerva-profile', null))
 const session = ref<MockSession | null>(read('minerva-session', null))
 const booking = ref<MentorBooking | null>(read('minerva-booking', null))
+const tokenBalance = ref(Math.max(0, Number(read<number>('minerva-token-balance', 12)) || 0))
 const legacyPracticeResult = read<PracticeResult | null>('minerva-practice', null)
 const practiceByScholarship = ref<Record<string, PracticeResult>>(read('minerva-practice-by-scholarship', {}))
 if (selectedId.value && legacyPracticeResult && !practiceByScholarship.value[selectedId.value]) practiceByScholarship.value[selectedId.value] = legacyPracticeResult
@@ -96,9 +98,9 @@ const practiceResult = computed<PracticeResult | null>({
   get: () => selectedId.value ? practiceByScholarship.value[selectedId.value] || null : null,
   set: (value) => { if (selectedId.value && value) practiceByScholarship.value[selectedId.value] = value },
 })
-persist('minerva-saved', savedIds); persist('minerva-selected', selectedId); persist('minerva-checklists', checklistsByScholarship)
+persist('minerva-saved', savedIds); persist('minerva-selected', selectedId); persist('minerva-applications', applicationIds); persist('minerva-checklists', checklistsByScholarship)
 persist('minerva-scholarship-notes', scholarshipNotes); persist('minerva-documents', documentsByScholarship)
-persist('minerva-profile', profile); persist('minerva-session', session); persist('minerva-booking', booking); persist('minerva-practice-by-scholarship', practiceByScholarship)
+persist('minerva-profile', profile); persist('minerva-session', session); persist('minerva-booking', booking); persist('minerva-token-balance', tokenBalance); persist('minerva-practice-by-scholarship', practiceByScholarship)
 
 const toasts = ref<{ id: number; message: string; tone: 'success' | 'info' }[]>([])
 let toastId = 0
@@ -123,15 +125,27 @@ export function useAppState() {
     ensureDocuments(scholarshipId).push(document)
     return document
   }
+
+  const addTokens = (amount: number) => {
+    tokenBalance.value += Math.max(0, amount)
+    toast(`${amount} tokens were added to your account.`)
+  }
   const toggleSaved = (id: string) => {
     savedIds.value = savedIds.value.includes(id) ? savedIds.value.filter((item) => item !== id) : [...savedIds.value, id]
     toast(savedIds.value.includes(id) ? 'Scholarship saved to your shortlist.' : 'Scholarship removed from saved items.', 'info')
   }
+  const startApplication = (id: string) => {
+    if (!applicationIds.value.includes(id)) applicationIds.value = [...applicationIds.value, id]
+    selectedId.value = id
+    ensureChecklist(id)
+    ensureDocuments(id)
+    toast('Scholarship application folder created.')
+  }
   const selectScholarship = (id: string) => { selectedId.value = id; toast('Scholarship selected for preparation.') }
   return {
-    savedIds, selectedId, checklist, checklistsByScholarship, scholarshipNotes, documents, documentsByScholarship,
-    profile, session, booking, practiceResult, progress, documentProgress, toasts, toast, toggleSaved, selectScholarship,
-    getChecklist, getProgress, getDocuments, getDocument, addChecklistItem, deleteChecklistItem, addDocument,
+    savedIds, applicationIds, selectedId, checklist, checklistsByScholarship, scholarshipNotes, documents, documentsByScholarship,
+    profile, session, booking, tokenBalance, practiceResult, progress, documentProgress, toasts, toast, toggleSaved, startApplication, selectScholarship,
+    getChecklist, getProgress, getDocuments, getDocument, addChecklistItem, deleteChecklistItem, addDocument, addTokens,
   }
 }
 
