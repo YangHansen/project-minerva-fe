@@ -4,13 +4,24 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ArrowRight, Check, ClipboardCheck, Files, GraduationCap, Plus, Target, Trash2, UploadCloud, UserRound } from 'lucide-vue-next'
 import type { UserProfile } from '../types'
 import { useAppState } from '../composables/useAppState'
+import BaseSelect from '../components/common/BaseSelect.vue'
 
 const router = useRouter()
 const route = useRoute()
 const { profile, session, toast } = useAppState()
 const error = ref('')
 const uploaded = ref<Record<string, string>>({})
-const fieldSuggestions = ['Accounting', 'Artificial Intelligence', 'Business Administration', 'Computer Science', 'Data Science', 'Economics', 'Education', 'Engineering', 'Environmental Science', 'International Relations', 'Law', 'Medicine', 'Public Health', 'Public Policy', 'Social Sciences']
+const countries = ['Indonesia', 'Malaysia', 'Singapore', 'Thailand', 'Vietnam', 'Philippines', 'India', 'Pakistan', 'Bangladesh', 'China', 'Japan', 'South Korea', 'Taiwan', 'Other']
+const educationLevels = ['High school', 'Diploma', 'Bachelor', 'Master', 'Doctorate']
+const targetEducationLevels = ['Bachelor', 'Master', 'Doctorate']
+const destinations = ['Any destination', 'Australia', 'Canada', 'China', 'France', 'Germany', 'Japan', 'Netherlands', 'New Zealand', 'Singapore', 'South Korea', 'Sweden', 'United Kingdom', 'United States', 'Europe']
+const enrollmentYears = ['2027', '2028', '2029', '2030']
+const scholarshipTypes = ['All', 'Government', 'University', 'International organisation', 'Private foundation']
+const fundingPreferences = ['Fully funded', 'Partial funding', 'Both']
+const certificateTypes = ['IELTS', 'TOEFL iBT', 'PTE Academic', 'Duolingo English Test', 'Cambridge English', 'TOPIK', 'JLPT', 'HSK', 'Other']
+const fieldSuggestions = [
+  'Accounting', 'Actuarial Science', 'Aerospace Engineering', 'Agricultural Science', 'Architecture', 'Artificial Intelligence', 'Biochemistry', 'Biomedical Engineering', 'Business Administration', 'Chemical Engineering', 'Chemistry', 'Civil Engineering', 'Climate Change and Sustainability', 'Communication Studies', 'Computer Science', 'Cybersecurity', 'Data Science', 'Dentistry', 'Digital Marketing', 'Economics', 'Education', 'Electrical and Electronic Engineering', 'Energy Engineering', 'Environmental Engineering', 'Environmental Science', 'Finance', 'Food Science and Technology', 'Gender Studies', 'Graphic Design', 'Health Informatics', 'Human Resource Management', 'Industrial Engineering', 'Information Systems', 'International Relations', 'International Business', 'Journalism', 'Law', 'Linguistics', 'Management', 'Marine Science', 'Materials Science', 'Mathematics', 'Mechanical Engineering', 'Medicine', 'Nursing', 'Pharmacy', 'Physics', 'Political Science', 'Psychology', 'Public Health', 'Public Policy', 'Robotics', 'Social Work', 'Software Engineering', 'Supply Chain Management', 'Tourism and Hospitality Management', 'Urban Planning'
+]
 const documents = ['CV', 'Personal statement']
 const steps = [
   { label: 'Personal information', icon: UserRound },
@@ -143,26 +154,31 @@ const save = () => {
           <div v-if="step === 0" class="onboarding-fields">
             <label class="field-label span-2">Full name<input v-model="form.name" class="field" placeholder="Enter your full name" /></label>
             <label class="field-label">Age<input v-model.number="form.age" type="number" min="15" class="field" placeholder="e.g. 24" /></label>
-            <label class="field-label">Country<select v-model="form.country" class="field"><option disabled value="">Select your country</option><option>Indonesia</option><option>Malaysia</option><option>Singapore</option><option>India</option><option>Philippines</option><option>Other</option></select></label>
+            <label class="field-label">Country<BaseSelect v-model="form.country" :options="countries" placeholder="Select your country" /></label>
           </div>
 
           <div v-else-if="step === 1" class="onboarding-fields">
-            <label class="field-label">Last education<select v-model="form.currentEducationLevel" class="field"><option disabled value="">Select your last education</option><option>High school</option><option>Diploma</option><option>Bachelor</option><option>Master</option><option>Doctorate</option></select></label>
-            <label class="field-label">Target education<select v-model="form.targetEducationLevel" class="field"><option disabled value="">Select your target education</option><option>Bachelor</option><option>Master</option><option>Doctorate</option></select></label>
+            <label class="field-label">Last education<BaseSelect v-model="form.currentEducationLevel" :options="educationLevels" placeholder="Select your last education" /></label>
+            <label class="field-label">Target education<BaseSelect v-model="form.targetEducationLevel" :options="targetEducationLevels" placeholder="Select your target education" /></label>
             <label v-if="requiresGpa" class="field-label">GPA <span class="text-red-500">Required</span><input v-model="form.gpa" required class="field" inputmode="decimal" placeholder="e.g. 3.75 / 4.00" /><small>Required for master’s and doctorate applications.</small></label>
-            <label class="field-label" :class="!requiresGpa && 'span-2'">Target field of study<input v-model="form.fieldOfStudy" list="field-options" class="field" placeholder="Start typing or choose a field" /><small>Choose a suggestion or enter any field.</small></label>
-            <datalist id="field-options"><option v-for="item in fieldSuggestions" :key="item" :value="item" /></datalist>
+            <label class="field-label" :class="!requiresGpa && 'span-2'">Target field of study<BaseSelect v-model="form.fieldOfStudy" :options="fieldSuggestions" placeholder="Search and choose a field of study" searchable /><small>Search from a detailed list of subjects.</small></label>
           </div>
 
           <div v-else-if="step === 2" class="onboarding-fields">
-            <label class="field-label">Destination<select v-model="form.destinationCountry" class="field"><option disabled value="">Choose a destination</option><option>Any destination</option><option>United Kingdom</option><option>Germany</option><option>Australia</option><option>Japan</option><option>United States</option><option>Europe</option></select></label>
-            <label class="field-label">Enrollment year<select v-model="form.enrollmentYear" class="field"><option disabled value="">Choose a year</option><option>2027</option><option>2028</option><option>2029</option><option>2030</option></select></label>
-            <label class="field-label">Scholarship type<select v-model="form.scholarshipType" class="field"><option disabled value="">Choose a scholarship type</option><option>All</option><option>Government</option><option>University</option><option>International</option></select></label>
-            <label class="field-label">Funding<select v-model="form.fundingPreference" class="field"><option disabled value="">Choose a funding preference</option><option>Fully funded</option><option>Partial funding</option><option>Both</option></select></label>
+            <label class="field-label">Destination<BaseSelect v-model="form.destinationCountry" :options="destinations" placeholder="Choose a destination" searchable /></label>
+            <label class="field-label">Enrollment year<BaseSelect v-model="form.enrollmentYear" :options="enrollmentYears" placeholder="Choose a year" /></label>
+            <label class="field-label">Scholarship type<BaseSelect v-model="form.scholarshipType" :options="scholarshipTypes" placeholder="Choose a scholarship type" /></label>
+            <label class="field-label">Funding<BaseSelect v-model="form.fundingPreference" :options="fundingPreferences" placeholder="Choose a funding preference" /></label>
             <section class="span-2 rounded-2xl border border-violet-100 bg-violet-50/40 p-5">
               <div class="flex flex-wrap items-center justify-between gap-3"><div><p class="field-label">Language certificates <span class="optional">If available</span></p><p class="mt-1 text-xs text-slate-500">Add every certificate you already hold. Each score is saved separately.</p></div><button type="button" class="inline-flex items-center gap-1 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-extrabold text-[#5b45f5]" @click="addCertificate"><Plus :size="15" />Add certificate</button></div>
               <p v-if="!form.languageCertificates.length" class="mt-5 rounded-xl border border-dashed border-violet-200 bg-white px-4 py-3 text-sm text-slate-500">No certificate added yet — you can continue without one.</p>
-              <div v-else class="mt-5 grid gap-3"><div v-for="(certificate, index) in form.languageCertificates" :key="index" class="grid gap-3 rounded-xl bg-white p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"><label class="field-label">Certificate<select v-model="certificate.type" class="field"><option disabled value="">Choose certificate</option><option>IELTS</option><option>TOEFL</option><option>TOPIK</option><option>PTE Academic</option><option>Duolingo English Test</option><option>Other</option></select></label><label class="field-label">Score <span class="optional">Optional</span><input v-model="certificate.score" class="field" :disabled="!certificate.type" :placeholder="certificate.type ? `Enter ${certificate.type} score` : 'Choose a certificate first'" /></label><button type="button" class="self-end rounded-xl p-3 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Remove certificate" @click="removeCertificate(index)"><Trash2 :size="17" /></button></div></div>
+              <div v-else class="mt-5 grid gap-3">
+                <div v-for="(certificate, index) in form.languageCertificates" :key="index" class="grid items-end gap-3 rounded-xl bg-white p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_48px]">
+                  <label class="field-label">Certificate<BaseSelect v-model="certificate.type" :options="certificateTypes" placeholder="Choose certificate" /></label>
+                  <label class="field-label">Score <span class="optional">Optional</span><input v-model="certificate.score" class="field" :disabled="!certificate.type" :placeholder="certificate.type ? `Enter ${certificate.type} score` : 'Choose a certificate first'" /></label>
+                  <button type="button" class="flex h-[52px] w-12 items-center justify-center rounded-xl border border-slate-200 text-slate-400 transition hover:border-red-100 hover:bg-red-50 hover:text-red-600" aria-label="Remove certificate" @click="removeCertificate(index)"><Trash2 :size="18" /></button>
+                </div>
+              </div>
             </section>
           </div>
 

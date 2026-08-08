@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowRight, CalendarDays, CheckCircle2, FileText, FolderOpen, Globe2, MoreVertical, UserRoundCheck } from 'lucide-vue-next'
+import { ArrowRight, CalendarDays, CheckCircle2, FileText, FolderOpen, Globe2, MoreVertical, Trash2, UserRoundCheck } from 'lucide-vue-next'
 import { getScholarship, scholarships } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseProgress from '../components/common/BaseProgress.vue'
+import BaseModal from '../components/common/BaseModal.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { selectedId, applicationIds, getChecklist, getProgress, getDocuments, selectScholarship, booking } = useAppState()
+const { selectedId, applicationIds, getChecklist, getProgress, getDocuments, selectScholarship, removeApplication, booking } = useAppState()
+const pendingDeleteId = ref('')
 
 const folders = computed(() => {
   const ids = [...new Set([selectedId.value, ...applicationIds.value].filter((id): id is string => Boolean(id)))]
@@ -40,6 +42,15 @@ const openFolder = (id: string) => {
   if (selectedId.value !== id) selectScholarship(id)
   router.push(`/dashboard/${id}`)
 }
+const pendingDelete = computed(() => folders.value.find((item) => item.id === pendingDeleteId.value))
+const confirmDelete = () => {
+  if (!pendingDeleteId.value) return
+  const deletedId = pendingDeleteId.value
+  pendingDeleteId.value = ''
+  removeApplication(deletedId)
+  const next = folders.value[0]
+  router.push(next ? `/dashboard/${next.id}` : '/scholarships?recommended=1')
+}
 
 watch(selected, (scholarship) => { if (scholarship && selectedId.value !== scholarship.id) selectedId.value = scholarship.id }, { immediate: true })
 onMounted(() => { if (!folders.value.length) router.replace('/scholarships?recommended=1') })
@@ -55,11 +66,13 @@ onMounted(() => { if (!folders.value.length) router.replace('/scholarships?recom
           <aside class="folder-rail">
             <div class="folder-rail-heading"><h2>Folders</h2><span>{{ folders.length }}</span></div>
             <div class="folder-rail-list">
-              <button v-for="item in folders" :key="item.id" class="folder-rail-card" :class="item.id === selected.id && 'active'" @click="openFolder(item.id)">
-                <span class="folder-rail-icon"><FolderOpen :size="21" /></span>
-                <span class="min-w-0 flex-1"><strong>{{ item.name }}</strong><small>{{ item.provider }} · {{ item.country }}</small><span class="folder-date inline-flex w-fit items-center gap-1 whitespace-nowrap"><CalendarDays :size="14" class="shrink-0" /><time>{{ item.deadline }}</time></span></span>
-                <MoreVertical :size="17" class="folder-more" />
-              </button>
+              <div v-for="item in folders" :key="item.id" class="folder-rail-card relative" :class="item.id === selected.id && 'active'">
+                <button class="flex min-w-0 flex-1 items-start gap-3 text-left" @click="openFolder(item.id)">
+                  <span class="folder-rail-icon"><FolderOpen :size="21" /></span>
+                  <span class="min-w-0 flex-1"><strong>{{ item.name }}</strong><small>{{ item.provider }} · {{ item.country }}</small><span class="folder-date inline-flex w-fit items-center gap-1 whitespace-nowrap"><CalendarDays :size="14" class="shrink-0" /><time>{{ item.deadline }}</time></span></span>
+                </button>
+                <button type="button" class="folder-more grid size-8 shrink-0 place-items-center rounded-lg transition hover:bg-red-50 hover:text-red-500" :aria-label="`Remove ${item.name} from My Scholarships`" @click="pendingDeleteId = item.id"><MoreVertical :size="17" /></button>
+              </div>
             </div>
           </aside>
 
@@ -114,5 +127,9 @@ onMounted(() => { if (!folders.value.length) router.replace('/scholarships?recom
         </section>
       </div>
     </div>
+    <BaseModal :open="Boolean(pendingDeleteId)" title="Remove scholarship?" @close="pendingDeleteId = ''">
+      <div class="flex items-start gap-4 rounded-2xl bg-red-50 p-4"><span class="grid size-11 shrink-0 place-items-center rounded-xl bg-white text-red-500"><Trash2 :size="20" /></span><div><p class="font-bold text-[#17136b]">{{ pendingDelete?.name }}</p><p class="mt-1 text-sm leading-6 text-slate-500">This removes its checklist, documents, notes, and progress from My Scholarships. The scholarship will remain available in Discover.</p></div></div>
+      <div class="mt-6 flex justify-end gap-3"><button class="btn-secondary" @click="pendingDeleteId = ''">Cancel</button><button class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-red-500 px-5 text-sm font-bold text-white hover:bg-red-600" @click="confirmDelete"><Trash2 :size="16" />Remove scholarship</button></div>
+    </BaseModal>
   </main>
 </template>

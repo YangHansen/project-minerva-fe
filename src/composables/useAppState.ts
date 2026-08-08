@@ -141,10 +141,19 @@ export function useAppState() {
     ensureDocuments(id)
     toast('Scholarship application folder created.')
   }
+  const removeApplication = (id: string) => {
+    applicationIds.value = applicationIds.value.filter((item) => item !== id)
+    delete checklistsByScholarship.value[id]
+    delete documentsByScholarship.value[id]
+    delete scholarshipNotes.value[id]
+    delete practiceByScholarship.value[id]
+    if (selectedId.value === id) selectedId.value = applicationIds.value[0] || null
+    toast('Scholarship removed from My Scholarships.', 'info')
+  }
   const selectScholarship = (id: string) => { selectedId.value = id; toast('Scholarship selected for preparation.') }
   return {
     savedIds, applicationIds, selectedId, checklist, checklistsByScholarship, scholarshipNotes, documents, documentsByScholarship,
-    profile, session, booking, tokenBalance, practiceResult, progress, documentProgress, toasts, toast, toggleSaved, startApplication, selectScholarship,
+    profile, session, booking, tokenBalance, practiceResult, progress, documentProgress, toasts, toast, toggleSaved, startApplication, removeApplication, selectScholarship,
     getChecklist, getProgress, getDocuments, getDocument, addChecklistItem, deleteChecklistItem, addDocument, addTokens,
   }
 }
