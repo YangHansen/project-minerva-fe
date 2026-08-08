@@ -14,11 +14,29 @@ const packs = [
 const selectedPackId = ref<(typeof packs)[number]['id']>('momentum')
 const processing = ref(false)
 const complete = ref(false)
+const cardholderName = ref('')
+const cardNumber = ref('')
+const expiryDate = ref('')
+const cvc = ref('')
 const selectedPack = computed(() => packs.find((pack) => pack.id === selectedPackId.value) ?? packs[1])
-const { tokenBalance, addTokens } = useAppState()
+const { tokenBalance, addTokens, toast } = useAppState()
+
+const digitsOnly = (value: string, max: number) => value.replace(/\D/g, '').slice(0, max)
+const formatCardNumber = (value: string) => digitsOnly(value, 16).replace(/(.{4})/g, '$1 ').trim()
+const formatExpiryDate = (value: string) => {
+  const digits = digitsOnly(value, 4)
+  return digits.length > 2 ? `${digits.slice(0, 2)} / ${digits.slice(2)}` : digits
+}
+const updateCardNumber = (event: Event) => { cardNumber.value = formatCardNumber((event.target as HTMLInputElement).value) }
+const updateExpiryDate = (event: Event) => { expiryDate.value = formatExpiryDate((event.target as HTMLInputElement).value) }
+const updateCvc = (event: Event) => { cvc.value = digitsOnly((event.target as HTMLInputElement).value, 4) }
 
 function purchaseTokens() {
   if (processing.value) return
+  if (!cardholderName.value.trim() || digitsOnly(cardNumber.value, 16).length !== 16 || digitsOnly(expiryDate.value, 4).length !== 4 || !/^\d{3,4}$/.test(cvc.value)) {
+    toast('Enter a cardholder name, 16-digit card number, expiry date, and 3–4 digit CVC.', 'info')
+    return
+  }
   processing.value = true
   window.setTimeout(() => {
     addTokens(selectedPack.value.tokens)
@@ -90,10 +108,10 @@ function purchaseTokens() {
             <form class="rounded-[26px] border border-slate-200 bg-white p-6 shadow-[0_12px_34px_rgba(61,51,137,.06)] sm:p-7" @submit.prevent="purchaseTokens">
               <div class="flex items-center gap-3"><span class="grid size-10 place-items-center rounded-xl bg-violet-50 text-[#5b45f5]"><CreditCard :size="20" /></span><div><h2 class="font-black text-[#17136b]">Payment details</h2><p class="text-xs text-slate-500">A safe local checkout simulation.</p></div></div>
               <div class="mt-6 grid gap-4 sm:grid-cols-2">
-                <label class="field-label sm:col-span-2">Cardholder name<input required class="field mt-2" placeholder="Name on card" /></label>
-                <label class="field-label sm:col-span-2">Card number<input required inputmode="numeric" class="field mt-2" placeholder="4242 4242 4242 4242" /></label>
-                <label class="field-label">Expiry date<input required class="field mt-2" placeholder="MM / YY" /></label>
-                <label class="field-label">CVC<input required inputmode="numeric" class="field mt-2" placeholder="123" /></label>
+                <label class="field-label sm:col-span-2">Cardholder name<input v-model="cardholderName" required autocomplete="cc-name" class="field mt-2" placeholder="Name on card" /></label>
+                <label class="field-label sm:col-span-2">Card number<input :value="cardNumber" required inputmode="numeric" autocomplete="cc-number" maxlength="19" class="field mt-2" placeholder="1234 1234 1234 1234" @input="updateCardNumber" /></label>
+                <label class="field-label">Expiry date<input :value="expiryDate" required inputmode="numeric" autocomplete="cc-exp" maxlength="7" class="field mt-2" placeholder="MM / YY" @input="updateExpiryDate" /></label>
+                <label class="field-label">CVC<input :value="cvc" required inputmode="numeric" autocomplete="cc-csc" maxlength="4" class="field mt-2" placeholder="123" @input="updateCvc" /></label>
               </div>
               <p class="mt-5 flex items-center gap-2 text-xs leading-5 text-slate-500"><LockKeyhole :size="15" class="text-emerald-600" />No payment details are stored or sent. This is a frontend-only demonstration.</p>
               <button class="btn-primary mt-6 w-full justify-center" type="submit" :disabled="processing"><CheckCircle2 v-if="complete" :size="18" />{{ processing ? 'Adding tokens…' : complete ? 'Tokens added — add another pack' : `Add ${selectedPack.tokens} tokens for ${selectedPack.price}` }}</button>
