@@ -2,8 +2,8 @@
 import { computed, ref } from 'vue'
 import { Check, CheckCircle2, Coins, CreditCard, LockKeyhole, Sparkles } from 'lucide-vue-next'
 import { useAppState } from '../composables/useAppState'
-import WorkspaceSidebar from '../components/dashboard/WorkspaceSidebar.vue'
-import WorkspaceTopbar from '../components/dashboard/WorkspaceTopbar.vue'
+import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
+import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 
 const packs = [
   { id: 'starter', name: 'Starter', tokens: 10, price: '$4.99', description: 'A focused boost for one application.', badge: '' },

@@ -16,8 +16,8 @@ const links = [
 <template>
   <header class="sticky top-0 z-50 border-b border-slate-200/70 bg-white/90 backdrop-blur-xl">
     <nav class="mx-auto flex h-20 w-[min(1460px,calc(100%-32px))] items-center justify-between sm:w-[min(1460px,calc(100%-56px))]" aria-label="Primary navigation">
-      <RouterLink to="/" class="flex items-center font-extrabold text-[#17136b]" aria-label="Minerva home">
-        <img src="/minerva-logo.png" alt="Minerva" class="h-14 w-48 object-contain object-left">
+      <RouterLink to="/" class="relative h-14 w-48 overflow-hidden font-extrabold text-[#17136b] sm:h-16 sm:w-56" aria-label="Minerva home">
+        <img src="/minerva-logo.png" alt="Minerva" class="absolute left-0 top-1/2 w-48 max-w-none -translate-y-1/2 sm:w-56">
       </RouterLink>
       <div class="hidden items-center gap-8 lg:flex">
         <RouterLink v-for="link in links" :key="link.label" :to="link.to" class="inline-flex items-center gap-1 text-[.82rem] font-bold text-slate-600 hover:text-[#5b45f5]">

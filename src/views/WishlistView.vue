@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Heart } from 'lucide-vue-next'
-import WorkspaceSidebar from '../components/dashboard/WorkspaceSidebar.vue'
-import WorkspaceTopbar from '../components/dashboard/WorkspaceTopbar.vue'
+import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
+import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import ScholarshipCard from '../components/scholarships/ScholarshipCard.vue'
 import { scholarships } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'

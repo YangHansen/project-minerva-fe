@@ -4,8 +4,8 @@ import { CalendarDays, Check, Edit3, Folder, Globe2, Plus, Trash2, X } from 'luc
 import type { ChecklistItem, ChecklistStatus } from '../types'
 import { getScholarship } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
-import WorkspaceSidebar from '../components/dashboard/WorkspaceSidebar.vue'
-import WorkspaceTopbar from '../components/dashboard/WorkspaceTopbar.vue'
+import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
+import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 
 const { checklist, progress, selectedId, scholarshipNotes, addChecklistItem, deleteChecklistItem, toast } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)

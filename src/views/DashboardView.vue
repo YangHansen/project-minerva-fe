@@ -4,8 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowRight, CalendarDays, CheckCircle2, FileText, FolderOpen, Globe2, MoreVertical, UserRoundCheck } from 'lucide-vue-next'
 import { getScholarship, scholarships } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
-import WorkspaceSidebar from '../components/dashboard/WorkspaceSidebar.vue'
-import WorkspaceTopbar from '../components/dashboard/WorkspaceTopbar.vue'
+import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
+import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseProgress from '../components/common/BaseProgress.vue'
 
 const route = useRoute()

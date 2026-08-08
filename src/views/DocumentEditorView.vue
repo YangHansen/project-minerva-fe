@@ -5,7 +5,7 @@ import { AlignLeft, ArrowRight, Bold, Check, ChevronDown, Edit3, Italic, Link2, 
 import type { DocumentSuggestion } from '../types'
 import { getScholarship } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
-import WorkspaceSidebar from '../components/dashboard/WorkspaceSidebar.vue'
+import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 
 const route = useRoute()
 const router = useRouter()

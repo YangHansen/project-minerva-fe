@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { ArrowLeft, BarChart3, CheckCircle2, CircleStop, Clock3, Mic, Pause, Play, UploadCloud, Video } from 'lucide-vue-next'
-import WorkspaceSidebar from '../components/dashboard/WorkspaceSidebar.vue'
-import WorkspaceTopbar from '../components/dashboard/WorkspaceTopbar.vue'
+import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
+import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import { getScholarship } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
 type Stage='setup'|'language'|'live'|'results'

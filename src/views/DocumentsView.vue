@@ -5,8 +5,8 @@ import { useRouter } from 'vue-router'
 import type { DocumentKind, ScholarshipDocument } from '../types'
 import { getScholarship } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
-import WorkspaceSidebar from '../components/dashboard/WorkspaceSidebar.vue'
-import WorkspaceTopbar from '../components/dashboard/WorkspaceTopbar.vue'
+import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
+import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 
 const router = useRouter()
 const { selectedId, applicationIds, documents, addDocument, selectScholarship } = useAppState()

@@ -5,8 +5,8 @@ import {
   ChevronRight, CircleAlert, Clock3, FilePenLine, Flag, Grid2X2, Headphones,
   ListChecks, LockKeyhole, Maximize2, Mic, Pause, Play, Send, Volume2,
 } from 'lucide-vue-next'
-import WorkspaceSidebar from '../components/dashboard/WorkspaceSidebar.vue'
-import WorkspaceTopbar from '../components/dashboard/WorkspaceTopbar.vue'
+import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
+import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import { useAppState } from '../composables/useAppState'
 import { getScholarship } from '../data/scholarships'
 
