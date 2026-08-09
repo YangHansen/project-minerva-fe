@@ -11,7 +11,7 @@ import BaseModal from '../components/common/BaseModal.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { selectedId, applicationIds, getChecklist, getProgress, getDocuments, selectScholarship, removeApplication, booking } = useAppState()
+const { selectedId, applicationIds, hydrateWorkspace, getChecklist, getProgress, getDocuments, selectScholarship, removeApplication, booking } = useAppState()
 const pendingDeleteId = ref('')
 
 const folders = computed(() => {
@@ -53,7 +53,7 @@ const confirmDelete = () => {
 }
 
 watch(selected, (scholarship) => { if (scholarship && selectedId.value !== scholarship.id) selectedId.value = scholarship.id }, { immediate: true })
-onMounted(() => { if (!folders.value.length) router.replace('/scholarships?recommended=1') })
+onMounted(async () => { await hydrateWorkspace(); if (!folders.value.length) await router.replace('/scholarships?recommended=1') })
 </script>
 
 <template>

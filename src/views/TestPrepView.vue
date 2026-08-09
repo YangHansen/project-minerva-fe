@@ -9,12 +9,28 @@ import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import { useAppState } from '../composables/useAppState'
 import { getScholarship } from '../data/scholarships'
+import { apiRequest } from '../api'
 
 type Skill = 'Listening' | 'Reading' | 'Writing' | 'Speaking'
 type Stage = 'catalog' | 'mode' | 'instructions' | 'microphone' | 'exam' | 'results'
 type Mode = 'practice' | 'simulation'
+interface IeltsEvaluation {
+  estimatedBand?: number
+  summary?: string
+  strengths?: string[]
+  improvements?: string[]
+  taskAchievement?: { score: number; feedback: string }
+  coherenceAndCohesion?: { score: number; feedback: string }
+  lexicalResource?: { score: number; feedback: string }
+  grammaticalRangeAndAccuracy?: { score: number; feedback: string }
+  fluencyAndCoherence?: { score: number; feedback: string }
+}
+interface SpeakingEvaluationResult {
+  transcript: string | { text: string }
+  evaluation: IeltsEvaluation
+}
 
-const { practiceResult, toast, selectedId } = useAppState()
+const { practiceResult, toast, selectedId, syncAiTokenBalance } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
 const stage = ref<Stage>('catalog')
 const currentSkill = ref<Skill>('Listening')
@@ -37,9 +53,20 @@ const micStatus = ref<'idle' | 'testing' | 'ready' | 'blocked'>('idle')
 const recording = ref(false)
 const recordingSaved = ref(false)
 const resultScore = ref(0)
+const submitting = ref(false)
+const aiError = ref('')
+const estimatedBand = ref<number | null>(null)
+const aiEvaluations = ref<IeltsEvaluation[]>([])
+const speakingTranscripts = ref<Record<number, string>>({})
+const speakingRecordings = new Map<number, Blob>()
+const speakingDurations = new Map<number, number>()
 let timer: number | undefined
 let recorder: MediaRecorder | undefined
 let micStream: MediaStream | undefined
+let recordingChunks: Blob[] = []
+let recordingStartedAt = 0
+let stopRecordingPromise: Promise<void> | null = null
+let resolveRecordingStop: (() => void) | null = null
 
 const skills = [
   { name: 'Listening' as Skill, icon: Headphones, detail: '4 parts · 40 questions', time: '30 min' },
@@ -61,9 +88,47 @@ const answeredCount = computed(() => {
   return Number(recordingSaved.value)
 })
 const totalQuestions = computed(() => currentSkill.value === 'Listening' ? 5 : currentSkill.value === 'Reading' ? 8 : currentSkill.value === 'Writing' ? 2 : 3)
+const combinedStrengths = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.strengths || []))].slice(0, 5))
+const combinedImprovements = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.improvements || []))].slice(0, 5))
+const speakingPrompts: Record<number, string> = {
+  1: 'Tell me about the place where you live and what you enjoy most about it.',
+  2: 'Describe an educational opportunity that changed your plans. You should say what it was, how you found it, and why it mattered.',
+  3: 'How can governments make international education more accessible to students from different backgrounds?',
+}
+const writingPrompts: Record<1 | 2, string> = {
+  1: 'The process shows how scholarship applications move from discovery to final submission. Summarise the main features in at least 150 words.',
+  2: 'Some people believe universities should prioritise academic achievement for scholarships, while others value leadership and community impact. Discuss both views and give your opinion in at least 250 words.',
+}
 
 watch(completedSimulationSets, (sets) => localStorage.setItem('minerva-ielts-simulation-sets', JSON.stringify(sets)), { deep: true })
+watch(speakingPart, (part) => { recordingSaved.value = speakingRecordings.has(part) })
+
+const resetAttempt = () => {
+  window.clearInterval(timer)
+  speechSynthesis.cancel()
+  micStream?.getTracks().forEach((track) => track.stop())
+  recorder = undefined
+  micStream = undefined
+  recording.value = false
+  recordingSaved.value = false
+  recordingChunks = []
+  stopRecordingPromise = null
+  resolveRecordingStop = null
+  listeningAnswers.value = ['', '', '', '', '']
+  readingAnswers.value = ['', '', '', '', '', '', '', '']
+  writingAnswers.value = { 1: '', 2: '' }
+  writingTask.value = 1
+  speakingPart.value = 1
+  speakingRecordings.clear()
+  speakingDurations.clear()
+  speakingTranscripts.value = {}
+  reviewed.value = []
+  aiEvaluations.value = []
+  estimatedBand.value = null
+  aiError.value = ''
+}
 const chooseSkill = (skill: Skill, requestedMode: Mode) => {
+  resetAttempt()
   currentSkill.value = skill
   mode.value = requestedMode
   fullTest.value = false
@@ -72,6 +137,7 @@ const chooseSkill = (skill: Skill, requestedMode: Mode) => {
 }
 const chooseSimulationSet = (set: number) => {
   if (set > 1 && !completedSimulationSets.value.includes(set - 1)) { toast(`Complete Simulation Set ${set - 1} to unlock this set.`, 'info'); return }
+  resetAttempt()
   currentSkill.value = 'Listening'; fullTest.value = true; simulationSet.value = set; mode.value = 'simulation'; timeLimit.value = 170; stage.value = 'mode'
 }
 const startTimer = () => {
@@ -79,7 +145,7 @@ const startTimer = () => {
   remaining.value = timeLimit.value * 60
   timer = window.setInterval(() => {
     if (remaining.value > 0) remaining.value--
-    else submitTest()
+    else void submitTest(true)
   }, 1000)
 }
 const openInstructions = () => { stage.value = 'instructions' }
@@ -109,30 +175,131 @@ const testMicrophone = async () => {
     micStatus.value = 'ready'
   } catch { micStatus.value = 'blocked' }
 }
+const stopActiveRecording = async () => {
+  if (!recording.value || !recorder) return
+  const activeRecorder = recorder
+  stopRecordingPromise = new Promise<void>((resolve) => { resolveRecordingStop = resolve })
+  activeRecorder.stop()
+  micStream?.getTracks().forEach((track) => track.stop())
+  recording.value = false
+  await stopRecordingPromise
+}
 const toggleRecording = async () => {
   if (recording.value) {
-    recorder?.stop(); micStream?.getTracks().forEach((track) => track.stop()); recording.value = false; recordingSaved.value = true; return
+    await stopActiveRecording()
+    return
   }
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    recorder = new MediaRecorder(micStream)
-    recorder.start(); recording.value = true
+    const preferredType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : ''
+    const activePart = speakingPart.value
+    const activeRecorder = preferredType ? new MediaRecorder(micStream, { mimeType: preferredType }) : new MediaRecorder(micStream)
+    recorder = activeRecorder
+    recordingChunks = []
+    activeRecorder.ondataavailable = (event) => { if (event.data.size) recordingChunks.push(event.data) }
+    activeRecorder.onstop = () => {
+      const duration = Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000))
+      speakingRecordings.set(activePart, new Blob(recordingChunks, { type: activeRecorder.mimeType || 'audio/webm' }))
+      speakingDurations.set(activePart, duration)
+      if (speakingPart.value === activePart) recordingSaved.value = true
+      resolveRecordingStop?.()
+      resolveRecordingStop = null
+      stopRecordingPromise = null
+    }
+    recordingStartedAt = Date.now()
+    activeRecorder.start()
+    recording.value = true
   } catch { micStatus.value = 'blocked' }
 }
-const submitTest = () => {
-  window.clearInterval(timer)
+const unwrapEvaluation = (result: IeltsEvaluation | { evaluation: IeltsEvaluation }) => 'evaluation' in result ? result.evaluation : result
+const evaluateWriting = async () => {
+  const tasks = ([1, 2] as const).filter((task) => writingAnswers.value[task].trim())
+  return Promise.all(tasks.map(async (task) => {
+    const result = await apiRequest<IeltsEvaluation | { evaluation: IeltsEvaluation }>('/api/ielts/writing/evaluate', {
+      method: 'POST',
+      body: { task: String(task), prompt: writingPrompts[task], response: writingAnswers.value[task] },
+    })
+    syncAiTokenBalance(result)
+    return unwrapEvaluation(result)
+  }))
+}
+const evaluateSpeaking = async () => {
+  const entries = [...speakingRecordings.entries()]
+  return Promise.all(entries.map(async ([part, audio]) => {
+    const form = new FormData()
+    form.append('audio', audio, `ielts-speaking-part-${part}.webm`)
+    form.append('prompt', speakingPrompts[part])
+    form.append('durationSeconds', String(speakingDurations.get(part) || 1))
+    const result = await apiRequest<SpeakingEvaluationResult | { result: SpeakingEvaluationResult }>('/api/ielts/speaking/evaluate', {
+      method: 'POST',
+      body: form,
+    })
+    syncAiTokenBalance(result)
+    const normalized = 'result' in result ? result.result : result
+    const transcript = typeof normalized.transcript === 'string' ? normalized.transcript : normalized.transcript.text
+    speakingTranscripts.value = { ...speakingTranscripts.value, [part]: transcript }
+    return normalized.evaluation
+  }))
+}
+const fullAnsweredCount = () => listeningAnswers.value.filter((answer) => answer.trim()).length
+  + readingAnswers.value.filter((answer) => answer.trim()).length
+  + Number(Boolean(writingAnswers.value[1].trim()))
+  + Number(Boolean(writingAnswers.value[2].trim()))
+  + speakingRecordings.size
+const firstIncompleteFullSkill = (): Skill | null => {
+  if (listeningAnswers.value.some((answer) => !answer.trim())) return 'Listening'
+  if (readingAnswers.value.some((answer) => !answer.trim())) return 'Reading'
+  if (!writingAnswers.value[1].trim() || !writingAnswers.value[2].trim()) return 'Writing'
+  if ([1, 2, 3].some((part) => !speakingRecordings.has(part))) return 'Speaking'
+  return null
+}
+const submitTest = async (allowIncomplete = false) => {
+  if (submitting.value) return
   speechSynthesis.cancel()
-  const raw = Math.round((answeredCount.value / totalQuestions.value) * 100)
-  resultScore.value = Math.max(0, raw)
-  practiceResult.value = {
-    type: `IELTS ${fullTest.value ? 'Full Test' : currentSkill.value}`,
-    score: resultScore.value,
-    completedAt: new Date().toISOString(),
-    explanation: 'Unofficial simulation result based on completed responses. Review flagged questions and practise under timed conditions.',
+  if (recording.value) await stopActiveRecording()
+
+  const incompleteSkill = fullTest.value ? firstIncompleteFullSkill() : null
+  if (incompleteSkill && !allowIncomplete) {
+    currentSkill.value = incompleteSkill
+    aiError.value = `Complete every ${incompleteSkill.toLowerCase()} response before submitting the full simulation.`
+    toast('The full simulation still has unanswered sections.', 'info')
+    return
   }
-  if (fullTest.value && mode.value === 'simulation' && !completedSimulationSets.value.includes(simulationSet.value)) completedSimulationSets.value.push(simulationSet.value)
-  toast(`IELTS ${mode.value} result saved to ${selected.value?.name}.`)
-  stage.value = 'results'
+
+  window.clearInterval(timer)
+  submitting.value = true
+  aiError.value = ''
+  aiEvaluations.value = []
+  estimatedBand.value = null
+  try {
+    const evaluations: IeltsEvaluation[] = []
+    if (fullTest.value || currentSkill.value === 'Writing') evaluations.push(...await evaluateWriting())
+    if (fullTest.value || currentSkill.value === 'Speaking') evaluations.push(...await evaluateSpeaking())
+    aiEvaluations.value = evaluations
+
+    const bands = evaluations.map((item) => Number(item.estimatedBand)).filter((value) => Number.isFinite(value))
+    if (bands.length) estimatedBand.value = Math.round((bands.reduce((total, value) => total + value, 0) / bands.length) * 2) / 2
+    const raw = fullTest.value
+      ? Math.round((fullAnsweredCount() / 18) * 100)
+      : estimatedBand.value !== null
+        ? Math.round((estimatedBand.value / 9) * 100)
+        : Math.round((answeredCount.value / totalQuestions.value) * 100)
+    resultScore.value = Math.max(0, raw)
+    practiceResult.value = {
+      type: `IELTS ${fullTest.value ? 'Full Test' : currentSkill.value}`,
+      score: resultScore.value,
+      completedAt: new Date().toISOString(),
+      explanation: evaluations[0]?.summary || 'Unofficial simulation result. Review flagged questions and practise under timed conditions.',
+    }
+    if (fullTest.value && mode.value === 'simulation' && !completedSimulationSets.value.includes(simulationSet.value)) completedSimulationSets.value.push(simulationSet.value)
+    toast(`IELTS ${mode.value} result saved to ${selected.value?.name}.`)
+    stage.value = 'results'
+  } catch (error) {
+    syncAiTokenBalance(error)
+    aiError.value = error instanceof Error ? error.message : 'Could not evaluate this IELTS response.'
+  } finally {
+    submitting.value = false
+  }
 }
 onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micStream?.getTracks().forEach((track) => track.stop()) })
 </script>
@@ -319,13 +486,14 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <button class="hidden rounded-xl border border-slate-200 px-4 py-2 text-sm font-extrabold sm:block" @click="toggleReview(1)">
 <Flag :size="16" class="inline" /> Review</button>
 <button class="rounded-xl border border-red-200 px-4 py-2 text-sm font-extrabold text-red-600" @click="exitTest">Exit</button>
-<button class="inline-flex items-center gap-2 rounded-xl bg-[#5b45f5] px-5 py-2.5 text-sm font-extrabold text-white" @click="submitTest">Submit <Send :size="16" />
+<button class="inline-flex items-center gap-2 rounded-xl bg-[#5b45f5] px-5 py-2.5 text-sm font-extrabold text-white disabled:opacity-60" :disabled="submitting" @click="submitTest()">{{ submitting ? 'Evaluating…' : 'Submit' }} <Send :size="16" />
 </button>
 </div>
 </header>
     <nav v-if="fullTest" class="flex gap-2 overflow-auto border-b border-slate-200 bg-[#fafafe] px-5 py-3">
-<button v-for="item in skills" :key="item.name" class="rounded-xl px-4 py-2 text-sm font-extrabold" :class="currentSkill === item.name ? 'bg-[#17136b] text-white' : 'text-slate-500'" @click="currentSkill = item.name">{{ item.name }}</button>
+<button v-for="item in skills" :key="item.name" class="rounded-xl px-4 py-2 text-sm font-extrabold" :class="currentSkill === item.name ? 'bg-[#17136b] text-white' : 'text-slate-500'" :disabled="recording" @click="currentSkill = item.name">{{ item.name }}</button>
 </nav>
+<p v-if="aiError && currentSkill !== 'Speaking'" role="alert" class="border-b border-rose-100 bg-rose-50 px-5 py-3 text-sm font-bold text-rose-700">{{ aiError }}</p>
 
     <section v-if="currentSkill === 'Listening'" class="flex flex-1 flex-col">
 <div class="flex items-center gap-4 border-b border-slate-200 bg-[#fafafe] px-6 py-4">
@@ -426,10 +594,12 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <Mic v-else :size="20" />{{ recording ? 'Stop recording' : recordingSaved ? 'Record again' : 'Start recording' }}</button>
 <p v-if="recordingSaved" class="mt-3 text-sm font-bold text-emerald-600">
 <Check :size="15" class="inline" />Response saved</p>
+<p v-if="speakingTranscripts[speakingPart]" class="mt-4 max-w-2xl rounded-xl bg-emerald-50 p-4 text-left text-sm leading-6 text-slate-700"><strong class="text-emerald-800">Transcript:</strong> {{ speakingTranscripts[speakingPart] }}</p>
+<p v-if="aiError" class="mt-4 max-w-2xl rounded-xl bg-red-50 p-4 text-sm font-bold text-red-700">{{ aiError }}</p>
 <div class="mt-10 flex gap-3">
-<button class="btn-secondary" :disabled="speakingPart === 1" @click="speakingPart--">
+<button class="btn-secondary" :disabled="recording || speakingPart === 1" @click="speakingPart--">
 <ChevronLeft :size="16" />Previous part</button>
-<button class="btn-primary" :disabled="speakingPart === 3" @click="speakingPart++">Next part <ChevronRight :size="16" />
+<button class="btn-primary" :disabled="recording || speakingPart === 3" @click="speakingPart++">Next part <ChevronRight :size="16" />
 </button>
 </div>
 </section>
@@ -456,11 +626,15 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <h1 class="mt-3 text-3xl font-extrabold text-[#17136b]">Your responses were submitted</h1>
 <div class="mx-auto mt-8 grid size-36 place-items-center rounded-full border-[10px] border-violet-100">
 <div>
-<strong class="text-4xl text-[#5b45f5]">{{ resultScore }}%</strong>
-<span class="block text-xs font-bold text-slate-400">completion</span>
+<strong class="text-4xl text-[#5b45f5]">{{ estimatedBand !== null ? estimatedBand : `${resultScore}%` }}</strong>
+<span class="block text-xs font-bold text-slate-400">{{ estimatedBand !== null ? 'estimated band' : 'completion' }}</span>
 </div>
 </div>
-<p class="mx-auto mt-7 max-w-xl text-sm leading-7 text-slate-500">This is an unofficial Minerva {{ mode }} result. It measures completed responses, not an official IELTS band score.</p>
+<p class="mx-auto mt-7 max-w-xl text-sm leading-7 text-slate-500">This is an unofficial Minerva {{ mode }} result. Writing and speaking feedback is AI-assisted; pronunciation is not assessed from a transcript.</p>
+<div v-if="combinedStrengths.length || combinedImprovements.length" class="mt-7 grid gap-4 text-left sm:grid-cols-2">
+  <article class="rounded-2xl bg-emerald-50 p-5"><h2 class="font-extrabold text-emerald-800">Strengths</h2><ul class="mt-3 grid gap-2 text-sm text-slate-700"><li v-for="item in combinedStrengths" :key="item">• {{ item }}</li></ul></article>
+  <article class="rounded-2xl bg-amber-50 p-5"><h2 class="font-extrabold text-amber-800">Next improvements</h2><ul class="mt-3 grid gap-2 text-sm text-slate-700"><li v-for="item in combinedImprovements" :key="item">• {{ item }}</li></ul></article>
+</div>
 <RouterLink to="/dashboard" class="btn-primary mt-8">Return to Dashboard <ArrowRight :size="16" />
 </RouterLink>
 </section>

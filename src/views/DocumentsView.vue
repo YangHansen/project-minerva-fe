@@ -19,6 +19,8 @@ const sortOptions = ['Last modified', 'Oldest modified', 'Document title']
 const isCreateOpen = ref(false)
 const newDocumentTitle = ref('')
 const newDocumentKind = ref<DocumentKind>('essay')
+const creatingDocument = ref(false)
+const createError = ref('')
 
 const documentTypes: { kind: DocumentKind; label: string; description: string }[] = [
   { kind: 'essay', label: 'Essay', description: 'A prompt-specific scholarship response' },
@@ -69,16 +71,26 @@ const openEditor = (doc: ScholarshipDocument) => router.push(`/documents/${doc.i
 const openCreateDocument = () => {
   newDocumentTitle.value = ''
   newDocumentKind.value = 'essay'
+  createError.value = ''
   isCreateOpen.value = true
 }
-const createDocument = () => {
-  if (!selectedId.value || !newDocumentTitle.value.trim()) return
+const createDocument = async () => {
+  if (!selectedId.value || !newDocumentTitle.value.trim() || creatingDocument.value) return
   const type = selectedDocumentType.value
-  const doc = addDocument(selectedId.value, newDocumentTitle.value.trim(), type.kind)
-  doc.category = type.label
-  doc.description = type.description
-  isCreateOpen.value = false
-  router.push(`/documents/${doc.id}`)
+  creatingDocument.value = true
+  createError.value = ''
+  try {
+    const doc = await addDocument(selectedId.value, newDocumentTitle.value.trim(), type.kind, {
+      category: type.label,
+      description: type.description,
+    })
+    isCreateOpen.value = false
+    await router.push(`/documents/${doc.id}`)
+  } catch (caught) {
+    createError.value = caught instanceof Error ? caught.message : 'Unable to create the document.'
+  } finally {
+    creatingDocument.value = false
+  }
 }
 </script>
 
@@ -175,9 +187,10 @@ const createDocument = () => {
         <label>Document title<input v-model="newDocumentTitle" :placeholder="selectedDocumentType.label" autofocus />
 </label>
         <p class="document-create-hint">{{ selectedDocumentType.description }}</p>
+        <p v-if="createError" class="error">{{ createError }}</p>
         <div class="document-create-actions">
-<button type="button" class="btn-secondary" @click="isCreateOpen = false">Cancel</button>
-<button type="submit" class="btn-primary" :disabled="!newDocumentTitle.trim()">Create & edit</button>
+<button type="button" class="btn-secondary" :disabled="creatingDocument" @click="isCreateOpen = false">Cancel</button>
+<button type="submit" class="btn-primary" :disabled="creatingDocument || !newDocumentTitle.trim()">{{ creatingDocument ? 'Creating...' : 'Create & edit' }}</button>
 </div>
       </form>
     </div>

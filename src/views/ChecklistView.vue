@@ -7,7 +7,7 @@ import { useAppState } from '../composables/useAppState'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 
-const { checklist, selectedId, scholarshipNotes, addChecklistItem, deleteChecklistItem, toast } = useAppState()
+const { checklist, selectedId, scholarshipNotes, addChecklistItem, updateChecklistItem, deleteChecklistItem, saveScholarshipNotes, toast } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
 const days = computed(() => selected.value ? Math.max(0, Math.ceil((new Date(selected.value.deadline).getTime() - Date.now()) / 86400000)) : 0)
 const notesEditing = ref(false)
@@ -15,7 +15,7 @@ const notesDraft = ref('')
 const startNotes = () => { notesDraft.value = selectedId.value ? scholarshipNotes.value[selectedId.value] || '' : ''; notesEditing.value = true }
 const saveNotes = () => {
   if (!selectedId.value) return
-  scholarshipNotes.value[selectedId.value] = notesDraft.value.trim()
+  saveScholarshipNotes(selectedId.value, notesDraft.value.trim())
   notesEditing.value = false
   toast('Scholarship notes saved.')
 }
@@ -30,7 +30,7 @@ const saveTask = () => {
   if (!selectedId.value || !form.value.title.trim()) return
   if (editingId.value) {
     const item = checklist.value.find((entry) => entry.id === editingId.value)
-    if (item) Object.assign(item, { title: form.value.title.trim(), description: form.value.description.trim() })
+    if (item) { Object.assign(item, { title: form.value.title.trim(), description: form.value.description.trim() }); updateChecklistItem(item) }
     toast('Checklist item updated.')
   } else {
     addChecklistItem(selectedId.value, { title: form.value.title.trim(), description: form.value.description.trim(), status: 'pending', category: 'Custom', required: true, notes: '' })
@@ -45,6 +45,7 @@ const removeTask = (item: ChecklistItem) => {
 }
 const toggleTask = (item: ChecklistItem) => {
   item.status = item.status === 'done' ? 'pending' : 'done'
+  updateChecklistItem(item)
   toast(item.status === 'done' ? 'Task completed.' : 'Task reopened.', 'info')
 }
 </script>

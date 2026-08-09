@@ -47,18 +47,25 @@ export interface DocumentSuggestion {
   detail: string
   replacement: string
   tone: 'purple' | 'yellow' | 'blue' | 'green'
+  originalText?: string
+  category?: string
+  priority?: 'high' | 'medium' | 'low'
   dismissed?: boolean
   accepted?: boolean
 }
 export interface DocumentReview {
+  id?: string
   overall: number
   clarity: number
   grammar: number
   structure: number
   impact: number
+  scholarshipAlignment?: number
   summary: string
+  strengths?: string[]
   suggestions: DocumentSuggestion[]
   reviewedAt: string
+  sourceFingerprint?: string
 }
 export interface ScholarshipDocument {
   id: string
@@ -79,4 +86,4 @@ export interface Mentor { id: string; name: string; initials: string; photo: str
 export interface MentorBooking { mentorId: string; mentorName: string; service: string; date: string; time: string; notes: string }
 export interface Notification { id: string; title: string; read: boolean; createdAt: string }
 export interface PricingPlan { name: string; status: string; features: string[]; highlighted?: boolean }
-export interface MockSession { name: string; email: string }
+export interface MockSession { id?: string; name: string; email: string; role?: string }

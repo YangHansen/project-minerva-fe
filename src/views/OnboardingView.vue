@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, Check, ClipboardCheck, Files, GraduationCap, Plus, Target, Trash2, UploadCloud, UserRound } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, Check, ClipboardCheck, Files, GraduationCap, Plus, Target, Trash2, UserRound } from 'lucide-vue-next'
 import type { UserProfile } from '../types'
-import { useAppState } from '../composables/useAppState'
+import { normalizeUserProfile, useAppState } from '../composables/useAppState'
 import BaseSelect from '../components/common/BaseSelect.vue'
+import { apiRequest } from '../api'
 
 const router = useRouter()
 const route = useRoute()
 const { profile, session, toast } = useAppState()
 const error = ref('')
-const uploaded = ref<Record<string, string>>({})
+const saving = ref(false)
 const countries = ['Indonesia', 'Malaysia', 'Singapore', 'Thailand', 'Vietnam', 'Philippines', 'India', 'Pakistan', 'Bangladesh', 'China', 'Japan', 'South Korea', 'Taiwan', 'Other']
 const educationLevels = ['High school', 'Diploma', 'Bachelor', 'Master', 'Doctorate']
 const targetEducationLevels = ['Bachelor', 'Master', 'Doctorate']
@@ -82,12 +83,6 @@ watch(() => form.targetEducationLevel, () => { if (!requiresGpa.value) form.gpa 
 const addCertificate = () => form.languageCertificates.push({ type: '', score: '' })
 const removeCertificate = (index: number) => form.languageCertificates.splice(index, 1)
 
-const upload = (document: string, event: Event) => {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  uploaded.value = { ...uploaded.value, [document]: file.name }
-  if (!form.availableDocuments.includes(document)) form.availableDocuments.push(document)
-}
 const canReach = (target: number) => target <= step.value || Array.from({ length: Math.min(target, 3) }, (_, index) => done(index)).every(Boolean)
 const go = (target: number) => {
   if (!canReach(target)) {
@@ -108,17 +103,27 @@ const next = () => {
   }
   go(step.value + 1)
 }
-const save = () => {
+const save = async () => {
   if (!requiredComplete.value) {
     error.value = 'Complete Personal information, Last education, and Scholarship goals first.'
     return
   }
-  profile.value = { ...form, availableDocuments: [...form.availableDocuments] }
-  localStorage.removeItem('minerva-onboarding-draft')
-  localStorage.removeItem('minerva-onboarding-step')
-  toast('Your preferences are saved. Let’s find your best matches!')
-  const destination = typeof route.query.return === 'string' && route.query.return.startsWith('/') ? route.query.return : '/scholarships?recommended=1'
-  router.push(destination)
+  saving.value = true
+  error.value = ''
+  try {
+    const nextProfile = { ...form, availableDocuments: [...form.availableDocuments] }
+    const result = await apiRequest<{ profile: UserProfile }>('/api/profile', { method: 'PUT', body: nextProfile })
+    profile.value = normalizeUserProfile(result.profile) || nextProfile
+    localStorage.removeItem('minerva-onboarding-draft')
+    localStorage.removeItem('minerva-onboarding-step')
+    toast('Your preferences are saved. Let’s find your best matches!')
+    const destination = typeof route.query.return === 'string' && route.query.return.startsWith('/') ? route.query.return : '/scholarships?recommended=1'
+    await router.push(destination)
+  } catch (reason) {
+    error.value = reason instanceof Error ? reason.message : 'Unable to save your profile.'
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
@@ -187,14 +192,14 @@ const save = () => {
             <div class="application-documents">
               <article v-for="document in documents" :key="document" :class="{ selected: form.availableDocuments.includes(document) }">
                 <label><input v-model="form.availableDocuments" type="checkbox" :value="document" /><span><strong>{{ document }}</strong><small>Use this as a base copy for scholarship-specific adjustments.</small></span></label>
-                <label class="document-upload"><UploadCloud :size="17" />{{ uploaded[document] || 'Upload file' }}<input type="file" accept=".pdf,.doc,.docx" @change="upload(document, $event)" /></label>
+                <span class="document-upload"><Check :size="17" />Mark availability with the checkbox</span>
               </article>
             </div>
           </div>
 
           <div v-else class="profile-review">
             <section><h2>Profile and education</h2><div class="review-grid"><div v-for="row in reviewRows" :key="String(row[0])"><span>{{ row[0] }}</span><strong>{{ row[1] || 'Not provided' }}</strong></div></div></section>
-            <section><h2>Application documents</h2><div class="review-documents"><span v-for="document in documents" :key="document" :class="form.availableDocuments.includes(document) && 'ready'"><Check :size="15" />{{ document }} · {{ form.availableDocuments.includes(document) ? 'Ready' : 'Skipped' }}</span></div></section>
+            <section><h2>Application documents</h2><div class="review-documents"><span v-for="document in documents" :key="document" :class="form.availableDocuments.includes(document) && 'ready'"><Check :size="15" />{{ document }} · {{ form.availableDocuments.includes(document) ? 'Available' : 'Not available' }}</span></div></section>
           </div>
         </div>
 
@@ -202,7 +207,7 @@ const save = () => {
         <footer class="onboarding-actions">
           <button class="btn-secondary" :class="step === 0 && 'invisible'" @click="go(step - 1)"><ArrowLeft :size="16" />Back</button>
           <button v-if="step < 4" class="btn-primary" @click="next">{{ step === 3 ? 'Review my profile' : 'Continue' }}<ArrowRight :size="16" /></button>
-          <button v-else class="btn-primary" @click="save">Save preferences & find my matches<ArrowRight :size="16" /></button>
+          <button v-else class="btn-primary" :disabled="saving" @click="save">{{ saving ? 'Saving preferences…' : 'Save preferences & find my matches' }}<ArrowRight :size="16" /></button>
         </footer>
       </section>
     </div>
