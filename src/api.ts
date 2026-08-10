@@ -110,8 +110,8 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 }
 
 /**
- * Untyped Eden client retained for legacy callers. New code should use
- * apiRequest until the backend App type is published as a shared package.
+ * Untyped Eden client retained for legacy callers. New feature calls go
+ * through apiRequest with local types (e.g. src/services/ielts.ts).
  */
 export const api = treaty(API_BASE_URL, {
   fetch: { credentials: 'include' },

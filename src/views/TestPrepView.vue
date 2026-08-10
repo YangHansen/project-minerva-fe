@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   ArrowRight, BookOpen, BookOpenCheck, Check, CheckCircle2, ChevronLeft,
   ChevronRight, CircleAlert, Clock3, FilePenLine, Flag, Grid2X2, Headphones,
@@ -9,26 +9,17 @@ import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import { useAppState } from '../composables/useAppState'
 import { getScholarship } from '../data/scholarships'
-import { apiRequest } from '../api'
+import {
+  evaluateIeltsSpeaking, evaluateIeltsWriting, getIeltsEvaluations, getIeltsSet,
+  getIeltsSubmissions, mediaUrl, submitIeltsSet,
+} from '../services/ielts'
+import type {
+  IeltsAiEvaluation, IeltsEvaluationHistoryItem, IeltsExercise, IeltsSubmissionResult,
+} from '../services/ielts'
 
 type Skill = 'Listening' | 'Reading' | 'Writing' | 'Speaking'
 type Stage = 'catalog' | 'mode' | 'instructions' | 'microphone' | 'exam' | 'results'
 type Mode = 'practice' | 'simulation'
-interface IeltsEvaluation {
-  estimatedBand?: number
-  summary?: string
-  strengths?: string[]
-  improvements?: string[]
-  taskAchievement?: { score: number; feedback: string }
-  coherenceAndCohesion?: { score: number; feedback: string }
-  lexicalResource?: { score: number; feedback: string }
-  grammaticalRangeAndAccuracy?: { score: number; feedback: string }
-  fluencyAndCoherence?: { score: number; feedback: string }
-}
-interface SpeakingEvaluationResult {
-  transcript: string | { text: string }
-  evaluation: IeltsEvaluation
-}
 
 const { practiceResult, toast, selectedId, syncAiTokenBalance } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
@@ -56,10 +47,16 @@ const resultScore = ref(0)
 const submitting = ref(false)
 const aiError = ref('')
 const estimatedBand = ref<number | null>(null)
-const aiEvaluations = ref<IeltsEvaluation[]>([])
+const serverPercent = ref<number | null>(null)
+const aiEvaluations = ref<IeltsAiEvaluation[]>([])
 const speakingTranscripts = ref<Record<number, string>>({})
 const speakingRecordings = new Map<number, Blob>()
 const speakingDurations = new Map<number, number>()
+const exercises = ref<IeltsExercise[]>([])
+const loadingSet = ref(true)
+const setError = ref('')
+const submissionHistory = ref<IeltsSubmissionResult[]>([])
+const aiHistory = ref<IeltsEvaluationHistoryItem[]>([])
 let timer: number | undefined
 let recorder: MediaRecorder | undefined
 let micStream: MediaStream | undefined
@@ -74,11 +71,19 @@ const skills = [
   { name: 'Writing' as Skill, icon: FilePenLine, detail: '2 writing tasks', time: '60 min' },
   { name: 'Speaking' as Skill, icon: Mic, detail: '3 interview parts', time: '11–14 min' },
 ]
-const readingQuestions = [
-  'A challenge caused by limited infrastructure', 'A benefit for people outside major cities',
-  'A comparison with an older service', 'Evidence of rapid adoption',
-  'The largest', 'a local agent', 'Small businesses', 'reduced the cost of',
-]
+const listeningExercise = computed(() => exercises.value.find((item) => item.section === 'listening'))
+const readingExercise = computed(() => exercises.value.find((item) => item.section === 'reading'))
+const writingExercises = computed(() => exercises.value.filter((item) => item.section === 'writing').sort((a, b) => a.order - b.order))
+const speakingExercises = computed(() => exercises.value.filter((item) => item.section === 'speaking').sort((a, b) => a.order - b.order))
+const listeningLabels = computed(() => listeningExercise.value?.questions.map((item) => item.questionText) || [])
+const readingQuestionItems = computed(() => readingExercise.value?.questions.map((item) => ({ text: item.questionText, type: item.type, options: item.options })) || [])
+const readingParagraphs = computed(() => (readingExercise.value?.content.split('\n').filter(Boolean) || []).map((line) => {
+  const match = line.match(/^([A-E])\.\s*(.*)$/s)
+  return match ? { letter: match[1], body: match[2] } : { letter: '', body: line }
+}))
+const listeningAudioUrl = computed(() => mediaUrl(listeningExercise.value?.audioUrl))
+const writingPrompt = (task: 1 | 2) => writingExercises.value[task - 1]?.content || ''
+const speakingPrompt = (part: number) => speakingExercises.value[part - 1]?.content || ''
 const formatTime = computed(() => `${String(Math.floor(remaining.value / 60)).padStart(2, '0')}:${String(remaining.value % 60).padStart(2, '0')}`)
 const wordCount = computed(() => writingAnswers.value[writingTask.value].trim() ? writingAnswers.value[writingTask.value].trim().split(/\s+/).length : 0)
 const answeredCount = computed(() => {
@@ -87,18 +92,9 @@ const answeredCount = computed(() => {
   if (currentSkill.value === 'Writing') return Number(Boolean(writingAnswers.value[1].trim())) + Number(Boolean(writingAnswers.value[2].trim()))
   return Number(recordingSaved.value)
 })
-const totalQuestions = computed(() => currentSkill.value === 'Listening' ? 5 : currentSkill.value === 'Reading' ? 8 : currentSkill.value === 'Writing' ? 2 : 3)
+const totalQuestions = computed(() => currentSkill.value === 'Listening' ? listeningExercise.value?.questions.length || 5 : currentSkill.value === 'Reading' ? readingExercise.value?.questions.length || 8 : currentSkill.value === 'Writing' ? 2 : 3)
 const combinedStrengths = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.strengths || []))].slice(0, 5))
 const combinedImprovements = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.improvements || []))].slice(0, 5))
-const speakingPrompts: Record<number, string> = {
-  1: 'Tell me about the place where you live and what you enjoy most about it.',
-  2: 'Describe an educational opportunity that changed your plans. You should say what it was, how you found it, and why it mattered.',
-  3: 'How can governments make international education more accessible to students from different backgrounds?',
-}
-const writingPrompts: Record<1 | 2, string> = {
-  1: 'The process shows how scholarship applications move from discovery to final submission. Summarise the main features in at least 150 words.',
-  2: 'Some people believe universities should prioritise academic achievement for scholarships, while others value leadership and community impact. Discuss both views and give your opinion in at least 250 words.',
-}
 
 watch(completedSimulationSets, (sets) => localStorage.setItem('minerva-ielts-simulation-sets', JSON.stringify(sets)), { deep: true })
 watch(speakingPart, (part) => { recordingSaved.value = speakingRecordings.has(part) })
@@ -125,6 +121,7 @@ const resetAttempt = () => {
   reviewed.value = []
   aiEvaluations.value = []
   estimatedBand.value = null
+  serverPercent.value = null
   aiError.value = ''
 }
 const chooseSkill = (skill: Skill, requestedMode: Mode) => {
@@ -159,7 +156,7 @@ const toggleReview = (number: number) => { reviewed.value = reviewed.value.inclu
 
 const playListening = () => {
   if (playing.value) { speechSynthesis.cancel(); playing.value = false; return }
-  const script = 'You will hear a university accommodation officer speaking with a student. The student name is Maya Chen. Her passport number is K L 4729. She enrolled in Environmental Policy. The course lasts eighteen months, and she prefers a quiet room near the library.'
+  const script = listeningExercise.value?.content || ''
   const utterance = new SpeechSynthesisUtterance(script)
   utterance.rate = 0.86
   utterance.onend = () => { playing.value = false; audioProgress.value = 100 }
@@ -211,16 +208,16 @@ const toggleRecording = async () => {
     recording.value = true
   } catch { micStatus.value = 'blocked' }
 }
-const unwrapEvaluation = (result: IeltsEvaluation | { evaluation: IeltsEvaluation }) => 'evaluation' in result ? result.evaluation : result
 const evaluateWriting = async () => {
   const tasks = ([1, 2] as const).filter((task) => writingAnswers.value[task].trim())
   return Promise.all(tasks.map(async (task) => {
-    const result = await apiRequest<IeltsEvaluation | { evaluation: IeltsEvaluation }>('/api/ielts/writing/evaluate', {
-      method: 'POST',
-      body: { task: String(task), prompt: writingPrompts[task], response: writingAnswers.value[task] },
+    const result = await evaluateIeltsWriting({
+      task: String(task),
+      prompt: writingPrompt(task),
+      response: writingAnswers.value[task],
     })
     syncAiTokenBalance(result)
-    return unwrapEvaluation(result)
+    return result.evaluation
   }))
 }
 const evaluateSpeaking = async () => {
@@ -228,24 +225,14 @@ const evaluateSpeaking = async () => {
   return Promise.all(entries.map(async ([part, audio]) => {
     const form = new FormData()
     form.append('audio', audio, `ielts-speaking-part-${part}.webm`)
-    form.append('prompt', speakingPrompts[part])
+    form.append('prompt', speakingPrompt(part))
     form.append('durationSeconds', String(speakingDurations.get(part) || 1))
-    const result = await apiRequest<SpeakingEvaluationResult | { result: SpeakingEvaluationResult }>('/api/ielts/speaking/evaluate', {
-      method: 'POST',
-      body: form,
-    })
+    const result = await evaluateIeltsSpeaking(form)
     syncAiTokenBalance(result)
-    const normalized = 'result' in result ? result.result : result
-    const transcript = typeof normalized.transcript === 'string' ? normalized.transcript : normalized.transcript.text
-    speakingTranscripts.value = { ...speakingTranscripts.value, [part]: transcript }
-    return normalized.evaluation
+    speakingTranscripts.value = { ...speakingTranscripts.value, [part]: result.transcript.text }
+    return result.evaluation
   }))
 }
-const fullAnsweredCount = () => listeningAnswers.value.filter((answer) => answer.trim()).length
-  + readingAnswers.value.filter((answer) => answer.trim()).length
-  + Number(Boolean(writingAnswers.value[1].trim()))
-  + Number(Boolean(writingAnswers.value[2].trim()))
-  + speakingRecordings.size
 const firstIncompleteFullSkill = (): Skill | null => {
   if (listeningAnswers.value.some((answer) => !answer.trim())) return 'Listening'
   if (readingAnswers.value.some((answer) => !answer.trim())) return 'Reading'
@@ -271,16 +258,31 @@ const submitTest = async (allowIncomplete = false) => {
   aiError.value = ''
   aiEvaluations.value = []
   estimatedBand.value = null
+  serverPercent.value = null
   try {
-    const evaluations: IeltsEvaluation[] = []
+    const autoScored = exercises.value
+      .filter((item) => (fullTest.value || currentSkill.value === 'Listening' || currentSkill.value === 'Reading') && (item.section === 'listening' || item.section === 'reading'))
+      .map((item) => ({
+        exerciseId: item.id,
+        answers: item.section === 'listening' ? listeningAnswers.value : readingAnswers.value,
+      }))
+    if (autoScored.length) {
+      const submissions = await submitIeltsSet(simulationSet.value, autoScored)
+      const total = submissions.reduce((sum, item) => sum + item.totalQuestions, 0)
+      const correct = submissions.reduce((sum, item) => sum + item.score, 0)
+      if (total) serverPercent.value = Math.round((correct / total) * 100)
+      submissionHistory.value = submissions
+    }
+
+    const evaluations: IeltsAiEvaluation[] = []
     if (fullTest.value || currentSkill.value === 'Writing') evaluations.push(...await evaluateWriting())
     if (fullTest.value || currentSkill.value === 'Speaking') evaluations.push(...await evaluateSpeaking())
     aiEvaluations.value = evaluations
 
     const bands = evaluations.map((item) => Number(item.estimatedBand)).filter((value) => Number.isFinite(value))
     if (bands.length) estimatedBand.value = Math.round((bands.reduce((total, value) => total + value, 0) / bands.length) * 2) / 2
-    const raw = fullTest.value
-      ? Math.round((fullAnsweredCount() / 18) * 100)
+    const raw = serverPercent.value !== null
+      ? serverPercent.value
       : estimatedBand.value !== null
         ? Math.round((estimatedBand.value / 9) * 100)
         : Math.round((answeredCount.value / totalQuestions.value) * 100)
@@ -301,6 +303,25 @@ const submitTest = async (allowIncomplete = false) => {
     submitting.value = false
   }
 }
+const loadSet = async () => {
+  loadingSet.value = true
+  setError.value = ''
+  try {
+    exercises.value = await getIeltsSet(1)
+  } catch (error) {
+    setError.value = error instanceof Error ? error.message : 'Could not load the IELTS test set.'
+  } finally {
+    loadingSet.value = false
+  }
+}
+const loadHistory = async () => {
+  try {
+    const [submissions, evaluations] = await Promise.all([getIeltsSubmissions(), getIeltsEvaluations()])
+    submissionHistory.value = submissions
+    aiHistory.value = evaluations
+  } catch { /* history is best-effort; the exam still works without it */ }
+}
+onMounted(() => { void loadSet(); void loadHistory() })
 onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micStream?.getTracks().forEach((track) => track.stop()) })
 </script>
 
@@ -341,6 +362,8 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 </div>
 <span class="text-sm font-bold text-slate-400">Academic · Computer-delivered</span>
 </div>
+<p v-if="loadingSet" class="mt-4 rounded-xl bg-violet-50 px-4 py-3 text-sm font-bold text-[#5b45f5]">Loading test content…</p>
+<p v-else-if="setError" role="alert" class="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{{ setError }}</p>
 <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
 <article v-for="item in skills" :key="item.name" class="flex min-h-44 flex-col rounded-xl border border-slate-200 p-4">
 <span class="grid size-9 place-items-center rounded-xl bg-violet-100 text-[#5b45f5]">
@@ -350,11 +373,34 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <p class="mt-1 text-xs text-slate-500">{{ item.detail }}</p>
 <p class="mt-1 text-xs font-bold text-slate-400">{{ item.time }}</p>
 <div class="mt-auto pt-4">
-<button class="w-full rounded-lg border border-violet-200 px-3 py-2 text-xs font-extrabold text-[#5b45f5]" @click="chooseSkill(item.name, 'practice')">Practice</button>
+<button class="w-full rounded-lg border border-violet-200 px-3 py-2 text-xs font-extrabold text-[#5b45f5] disabled:opacity-50" :disabled="loadingSet || !!setError" @click="chooseSkill(item.name, 'practice')">Practice</button>
 </div>
 </article>
 </div>
-<button class="mt-3 w-full rounded-lg bg-[#251a88] px-4 py-2.5 text-sm font-extrabold text-white" @click="chooseSimulationSet(1)">Full Simulation</button>
+<button class="mt-3 w-full rounded-lg bg-[#251a88] px-4 py-2.5 text-sm font-extrabold text-white disabled:opacity-50" :disabled="loadingSet || !!setError" @click="chooseSimulationSet(1)">Full Simulation</button>
+</section>
+
+          <section v-if="submissionHistory.length || aiHistory.length" class="mt-5 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+<h2 class="text-lg font-extrabold text-[#17136b]">Recent practice history</h2>
+<div v-if="submissionHistory.length" class="mt-4">
+<p class="text-xs font-extrabold uppercase tracking-[.14em] text-slate-400">Auto-scored</p>
+<ul class="mt-2 grid gap-1.5">
+<li v-for="item in submissionHistory" :key="item.id" class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+<span class="capitalize text-slate-600">{{ item.section }}</span>
+<span class="font-extrabold text-[#17136b]">{{ item.score }}/{{ item.totalQuestions }}</span>
+</li>
+</ul>
+</div>
+<div v-if="aiHistory.length" class="mt-4">
+<p class="text-xs font-extrabold uppercase tracking-[.14em] text-slate-400">AI evaluations</p>
+<ul class="mt-2 grid gap-1.5">
+<li v-for="item in aiHistory" :key="item.id" class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+<span class="capitalize text-slate-600">{{ item.kind }}</span>
+<span v-if="item.result.estimatedBand != null" class="font-extrabold text-[#5b45f5]">Band {{ item.result.estimatedBand }}</span>
+<span v-else class="text-xs text-slate-400">{{ new Date(item.createdAt).toLocaleDateString() }}</span>
+</li>
+</ul>
+</div>
 </section>
 
           <section v-if="false" class="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
@@ -496,7 +542,10 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <p v-if="aiError && currentSkill !== 'Speaking'" role="alert" class="border-b border-rose-100 bg-rose-50 px-5 py-3 text-sm font-bold text-rose-700">{{ aiError }}</p>
 
     <section v-if="currentSkill === 'Listening'" class="flex flex-1 flex-col">
-<div class="flex items-center gap-4 border-b border-slate-200 bg-[#fafafe] px-6 py-4">
+<div v-if="listeningAudioUrl" class="border-b border-slate-200 bg-[#fafafe] px-6 py-4">
+<audio :src="listeningAudioUrl" controls class="w-full" />
+</div>
+<div v-else class="flex items-center gap-4 border-b border-slate-200 bg-[#fafafe] px-6 py-4">
 <button class="grid size-10 place-items-center rounded-full bg-[#5b45f5] text-white" @click="playListening">
 <Pause v-if="playing" :size="18" />
 <Play v-else :size="18" />
@@ -508,11 +557,11 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <Volume2 :size="18" class="text-[#5b45f5]" />
 </div>
 <div class="mx-auto w-full max-w-6xl flex-1 p-6 sm:p-9">
-<p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Part 1 · Questions 1–5</p>
-<h1 class="mt-3 text-2xl font-extrabold">Student accommodation application</h1>
+<p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Part 1 · Questions 1–{{ listeningLabels.length }}</p>
+<h1 class="mt-3 text-2xl font-extrabold">{{ listeningExercise?.title }}</h1>
 <p class="mt-5 text-sm italic text-slate-500">Complete the form. Write NO MORE THAN THREE WORDS AND/OR A NUMBER for each answer.</p>
 <div class="mt-7 overflow-hidden rounded-2xl border border-slate-200">
-<div v-for="(label,index) in ['Student name','Passport number','Course enrolled','Course duration','Room preference']" :key="label" class="grid border-b border-slate-200 last:border-0 sm:grid-cols-[1fr_1.4fr]">
+<div v-for="(label,index) in listeningLabels" :key="label" class="grid border-b border-slate-200 last:border-0 sm:grid-cols-[1fr_1.4fr]">
 <span class="bg-[#fafafe] p-4 text-sm font-bold">{{ label }}</span>
 <label class="flex items-center gap-3 p-3">
 <span class="grid size-8 shrink-0 place-items-center rounded-full bg-[#5b45f5] text-xs font-extrabold text-white">{{ index + 1 }}</span>
@@ -526,33 +575,25 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
     <section v-else-if="currentSkill === 'Reading'" class="grid min-h-0 flex-1 lg:grid-cols-2">
 <article class="max-h-[calc(100vh-150px)] overflow-auto border-r border-slate-200 bg-[#f8f8ff] p-6 sm:p-9">
 <p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Part 1 · Reading passage 1</p>
-<h1 class="mt-3 text-3xl font-extrabold">Connected communities</h1>
-<p class="mt-2 text-sm italic text-slate-500">Spend about 20 minutes on Questions 1–13.</p>
+<h1 class="mt-3 text-3xl font-extrabold">{{ readingExercise?.title }}</h1>
+<p class="mt-2 text-sm italic text-slate-500">Spend about 20 minutes on Questions 1–{{ readingQuestionItems.length }}.</p>
 <div class="mt-7 space-y-6 text-sm leading-8 text-slate-700">
-<p>
-<b>A.</b> Digital payment services have changed daily life in regions where conventional banking is difficult to access. A mobile phone can now serve as a simple account, allowing users to send small amounts safely across long distances.</p>
-<p>
-<b>B.</b> The strongest early growth came from rural communities. Local shop owners became authorised agents, accepting deposits and paying withdrawals. This network reduced the need for expensive journeys to a city branch.</p>
-<p>
-<b>C.</b> Researchers initially expected young professionals to dominate adoption. Instead, small businesses and families used the service most frequently because transactions were faster and easier to document.</p>
-<p>
-<b>D.</b> Similar systems existed before, but the new platform expanded much more quickly. Within two years, registrations exceeded the provider’s original five-year forecast.</p>
-<p>
-<b>E.</b> Security remains important. Users must protect personal codes, while providers continue to improve identity checks and fraud monitoring.</p>
+<p v-for="paragraph in readingParagraphs" :key="paragraph.letter">
+<b>{{ paragraph.letter }}.</b> {{ paragraph.body }}</p>
 </div>
 </article>
 <article class="max-h-[calc(100vh-150px)] overflow-auto p-6 sm:p-9">
-<h2 class="text-xl font-extrabold text-[#5b45f5]">Questions 1–8</h2>
-<p class="mt-3 text-sm text-slate-500">For Questions 1–4, choose the paragraph A–E. Complete Questions 5–8 using words from the passage.</p>
+<h2 class="text-xl font-extrabold text-[#5b45f5]">Questions 1–{{ readingQuestionItems.length }}</h2>
+<p class="mt-3 text-sm text-slate-500">For Questions 1–4, choose the paragraph A–E. Complete the remaining questions using words from the passage.</p>
 <div class="mt-7 grid gap-5">
-<label v-for="(question,index) in readingQuestions" :key="question" class="flex items-center gap-3 text-sm">
+<label v-for="(question,index) in readingQuestionItems" :key="question.text" class="flex items-center gap-3 text-sm">
 <span class="grid size-8 shrink-0 place-items-center rounded-full bg-[#5b45f5] text-xs font-extrabold text-white">{{ index + 1 }}</span>
-<select v-if="index < 4" v-model="readingAnswers[index]" class="w-24 rounded-lg border border-slate-300 px-3 py-2">
+<select v-if="question.type === 'matching' || question.type === 'mcq'" v-model="readingAnswers[index]" class="w-24 rounded-lg border border-slate-300 px-3 py-2">
 <option value="">—</option>
-<option v-for="letter in ['A','B','C','D','E']" :key="letter">{{ letter }}</option>
+<option v-for="option in question.options" :key="option" :value="option">{{ option }}</option>
 </select>
 <input v-else v-model="readingAnswers[index]" class="w-40 rounded-lg border border-slate-300 px-3 py-2" />
-<span>{{ question }}</span>
+<span>{{ question.text }}</span>
 </label>
 </div>
 </article>
@@ -562,18 +603,13 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <article class="max-h-[calc(100vh-150px)] overflow-auto border-r border-slate-200 bg-[#fafafe] p-6 sm:p-9">
 <p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Writing task {{ writingTask }}</p>
 <h1 class="mt-3 text-2xl font-extrabold">{{ writingTask === 1 ? 'Academic Writing Task 1' : 'Academic Writing Task 2' }}</h1>
+<p class="mt-5 leading-7 text-slate-600">{{ writingPrompt(writingTask) }}</p>
 <template v-if="writingTask === 1">
-<p class="mt-5 leading-7 text-slate-600">The process below shows how scholarship applications move from discovery to final submission.</p>
-<p class="mt-4 leading-7 text-slate-600">Summarise the information by selecting and reporting the main features. Write at least 150 words.</p>
 <div class="mt-9 grid gap-3 sm:grid-cols-5">
 <div v-for="(step,index) in ['Discover','Check fit','Prepare','Review','Submit']" :key="step" class="relative rounded-xl border border-violet-200 bg-white p-4 text-center text-sm font-extrabold text-[#17136b]">
 <span class="mx-auto mb-2 grid size-7 place-items-center rounded-full bg-violet-100 text-xs text-[#5b45f5]">{{ index + 1 }}</span>{{ step }}<ArrowRight v-if="index < 4" :size="16" class="absolute -right-4 top-1/2 hidden -translate-y-1/2 text-[#5b45f5] sm:block" />
 </div>
 </div>
-</template>
-<template v-else>
-<p class="mt-5 leading-8 text-slate-600">Some people believe universities should prioritise academic achievement when awarding scholarships, while others think leadership and community impact are equally important.</p>
-<p class="mt-4 leading-8 text-slate-600">Discuss both views and give your own opinion. Write at least 250 words.</p>
 </template>
 </article>
 <article class="flex min-h-[520px] flex-col p-6 sm:p-9">
@@ -585,7 +621,7 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
     <section v-else class="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center p-6 text-center">
 <p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Speaking part {{ speakingPart }}</p>
 <h1 class="mt-4 text-3xl font-extrabold">{{ speakingPart === 1 ? 'Introduction and interview' : speakingPart === 2 ? 'Individual long turn' : 'Two-way discussion' }}</h1>
-<p class="mt-5 max-w-2xl text-lg leading-8 text-slate-600">{{ speakingPart === 1 ? 'Tell me about the place where you live and what you enjoy most about it.' : speakingPart === 2 ? 'Describe an educational opportunity that changed your plans. You should say what it was, how you found it, and why it mattered.' : 'How can governments make international education more accessible to students from different backgrounds?' }}</p>
+<p class="mt-5 max-w-2xl text-lg leading-8 text-slate-600">{{ speakingPrompt(speakingPart) }}</p>
 <div class="mt-9 flex h-20 items-center gap-2">
 <i v-for="n in 16" :key="n" class="w-2 rounded-full bg-[#5b45f5]" :style="{ height: `${recording ? 18 + ((n * 17) % 54) : 10}px`, opacity: recording ? 1 : .25 }" />
 </div>
