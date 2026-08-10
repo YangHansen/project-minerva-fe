@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { Check, CheckCircle2, Coins, CreditCard, LockKeyhole, Sparkles } from 'lucide-vue-next'
 import { useAppState } from '../composables/useAppState'
+import { apiRequest } from '../api'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 
@@ -19,7 +21,9 @@ const cardNumber = ref('')
 const expiryDate = ref('')
 const cvc = ref('')
 const selectedPack = computed(() => packs.find((pack) => pack.id === selectedPackId.value) ?? packs[1])
+const router = useRouter()
 const { tokenBalance, toast } = useAppState()
+const projectedBalance = computed(() => tokenBalance.value + (complete.value ? 0 : selectedPack.value.tokens))
 
 const digitsOnly = (value: string, max: number) => value.replace(/\D/g, '').slice(0, max)
 const formatCardNumber = (value: string) => digitsOnly(value, 16).replace(/(.{4})/g, '$1 ').trim()
@@ -31,20 +35,33 @@ const updateCardNumber = (event: Event) => { cardNumber.value = formatCardNumber
 const updateExpiryDate = (event: Event) => { expiryDate.value = formatExpiryDate((event.target as HTMLInputElement).value) }
 const updateCvc = (event: Event) => { cvc.value = digitsOnly((event.target as HTMLInputElement).value, 4) }
 
-function purchaseTokens() {
-  if (processing.value) return
+async function purchaseTokens() {
+  if (processing.value || complete.value) return
   if (!cardholderName.value.trim() || digitsOnly(cardNumber.value, 16).length !== 16 || digitsOnly(expiryDate.value, 4).length !== 4 || !/^\d{3,4}$/.test(cvc.value)) {
-    toast('Enter a cardholder name, 16-digit card number, expiry date, and 3–4 digit CVC.', 'info')
+    toast('Enter a cardholder name, 16-digit card number, expiry date, and 3-4 digit CVC.', 'info')
     return
   }
+
   processing.value = true
-  window.setTimeout(() => {
-    complete.value = true
-    toast('Checkout is not connected yet. No card data was sent and your token balance was not changed.', 'info')
-    processing.value = false
+  window.setTimeout(async () => {
+    try {
+      // This is deliberately a development-only demo endpoint. No payment data
+      // leaves the browser; it credits the same balance checked by AI routes.
+      const result = await apiRequest<{ creditedTokens: number; tokenBalance: number }>('/api/billing/demo-topups', {
+        method: 'POST',
+        body: { packId: selectedPack.value.id },
+      })
+      tokenBalance.value = result.tokenBalance
+      complete.value = true
+      toast(`Payment successful - ${result.creditedTokens} tokens added to your account.`)
+      window.setTimeout(() => { void router.push('/dashboard') }, 1500)
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Demo top-up could not be completed.', 'info')
+    } finally {
+      processing.value = false
+    }
   }, 550)
-}
-</script>
+}</script>
 
 <template>
   <main class="workspace-shell">
@@ -85,9 +102,9 @@ function purchaseTokens() {
               <div>
                 <p class="eyebrow">Add tokens</p>
                 <h1 class="mt-2 text-3xl font-black tracking-tight text-[#17136b]">Choose a token pack</h1>
-                <p class="mt-2 text-sm text-slate-500">Pricing preview only. Checkout is not connected, so this screen cannot add account credits yet.</p>
+                <p class="mt-2 text-sm text-slate-500">Demo checkout only. No money is processed; completing this form adds tokens to your local demo balance.</p>
               </div>
-              <span class="rounded-full bg-violet-50 px-4 py-2 text-xs font-black text-[#5b45f5]">Checkout preview</span>
+              <span class="rounded-full bg-violet-50 px-4 py-2 text-xs font-black text-[#5b45f5]">Demo checkout</span>
             </div>
 
             <div class="mt-5 grid gap-4 md:grid-cols-3">
@@ -106,23 +123,23 @@ function purchaseTokens() {
 
           <section class="mt-6 grid gap-5 lg:grid-cols-[1.25fr_.75fr]">
             <form class="rounded-[26px] border border-slate-200 bg-white p-6 shadow-[0_12px_34px_rgba(61,51,137,.06)] sm:p-7" @submit.prevent="purchaseTokens">
-              <div class="flex items-center gap-3"><span class="grid size-10 place-items-center rounded-xl bg-violet-50 text-[#5b45f5]"><CreditCard :size="20" /></span><div><h2 class="font-black text-[#17136b]">Payment details</h2><p class="text-xs text-slate-500">A local form preview; nothing is submitted.</p></div></div>
+              <div class="flex items-center gap-3"><span class="grid size-10 place-items-center rounded-xl bg-violet-50 text-[#5b45f5]"><CreditCard :size="20" /></span><div><h2 class="font-black text-[#17136b]">Payment details</h2><p class="text-xs text-slate-500">Demo only. Card details are never stored or sent.</p></div></div>
               <div class="mt-6 grid gap-4 sm:grid-cols-2">
                 <label class="field-label sm:col-span-2">Cardholder name<input v-model="cardholderName" required autocomplete="cc-name" class="field mt-2" placeholder="Name on card" /></label>
                 <label class="field-label sm:col-span-2">Card number<input :value="cardNumber" required inputmode="numeric" autocomplete="cc-number" maxlength="19" class="field mt-2" placeholder="1234 1234 1234 1234" @input="updateCardNumber" /></label>
                 <label class="field-label">Expiry date<input :value="expiryDate" required inputmode="numeric" autocomplete="cc-exp" maxlength="7" class="field mt-2" placeholder="MM / YY" @input="updateExpiryDate" /></label>
                 <label class="field-label">CVC<input :value="cvc" required inputmode="numeric" autocomplete="cc-csc" maxlength="4" class="field mt-2" placeholder="123" @input="updateCvc" /></label>
               </div>
-              <p class="mt-5 flex items-center gap-2 text-xs leading-5 text-slate-500"><LockKeyhole :size="15" class="text-emerald-600" />No payment details are stored or sent. This is a frontend-only preview; your balance will not change.</p>
-              <button class="btn-primary mt-6 w-full justify-center" type="submit" :disabled="processing"><CheckCircle2 v-if="complete" :size="18" />{{ processing ? 'Checking preview…' : complete ? 'Preview complete — no charge made' : `Preview ${selectedPack.tokens} tokens for ${selectedPack.price}` }}</button>
+              <p class="mt-5 flex items-center gap-2 text-xs leading-5 text-slate-500"><LockKeyhole :size="15" class="text-emerald-600" />No payment details are stored or sent. This local demo adds tokens to your current browser balance.</p>
+              <button class="btn-primary mt-6 w-full justify-center" type="submit" :disabled="processing"><CheckCircle2 v-if="complete" :size="18" />{{ processing ? 'Completing demo payment…' : complete ? 'Payment successful — returning to dashboard' : `Complete demo payment for ${selectedPack.tokens} tokens` }}</button>
             </form>
 
             <aside class="rounded-[26px] bg-[#241979] p-6 text-white shadow-[0_16px_32px_rgba(36,25,121,.16)] sm:p-7">
               <p class="text-[.68rem] font-black uppercase tracking-[.16em] text-violet-200">Order summary</p>
               <div class="mt-6 flex items-center justify-between border-b border-white/15 pb-5"><div><p class="font-black">{{ selectedPack.name }} pack</p><p class="mt-1 text-sm text-violet-100">{{ selectedPack.tokens }} Minerva tokens</p></div><strong>{{ selectedPack.price }}</strong></div>
               <div class="mt-5 flex items-center justify-between text-sm text-violet-100"><span>Current balance</span><strong class="text-white">{{ tokenBalance }} tokens</strong></div>
-              <div class="mt-3 flex items-center justify-between text-sm text-violet-100"><span>Illustrative balance</span><strong class="text-white">{{ tokenBalance + selectedPack.tokens }} tokens</strong></div>
-              <p class="mt-7 text-xs leading-5 text-violet-200">A payment provider and verified server webhook must be connected before purchased tokens can be credited to your account.</p>
+              <div class="mt-3 flex items-center justify-between text-sm text-violet-100"><span>New balance</span><strong class="text-white">{{ projectedBalance }} tokens</strong></div>
+              <p class="mt-7 text-xs leading-5 text-violet-200">Demo mode only: no money is charged. The selected tokens will be added locally, then you will return to your dashboard.</p>
             </aside>
           </section>
         </section>
