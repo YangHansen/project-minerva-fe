@@ -624,6 +624,18 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <p v-if="aiError && currentSkill !== 'Speaking'" role="alert" class="border-b border-rose-100 bg-rose-50 px-5 py-3 text-sm font-bold text-rose-700">{{ aiError }}</p>
 
     <section v-if="currentSkill === 'Listening'" class="flex flex-1 flex-col">
+<div class="flex gap-2 border-b border-slate-200 bg-[#fafafe] px-6 py-3">
+  <button
+    v-for="exercise in listeningExercises"
+    :key="exercise.order"
+    class="rounded-xl px-4 py-2 text-sm font-extrabold transition-colors"
+    :class="listeningPart === exercise.order ? 'bg-[#17136b] text-white' : 'text-slate-500 hover:bg-slate-100'"
+    :disabled="mode === 'practice' && !selectedParts.listening.includes(exercise.order)"
+    @click="listeningPart = exercise.order"
+  >
+    Part {{ exercise.order }}
+  </button>
+</div>
 <div v-if="listeningAudioUrl" class="border-b border-slate-200 bg-[#fafafe] px-6 py-4">
 <audio :src="listeningAudioUrl" controls class="w-full" />
 </div>
@@ -655,6 +667,18 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 </section>
 
     <section v-else-if="currentSkill === 'Reading'" class="grid min-h-0 flex-1 lg:grid-cols-2">
+<div class="flex gap-2 border-b border-slate-200 bg-[#fafafe] px-6 py-3">
+  <button
+    v-for="exercise in readingExercises"
+    :key="exercise.order"
+    class="rounded-xl px-4 py-2 text-sm font-extrabold transition-colors"
+    :class="readingPart === exercise.order ? 'bg-[#17136b] text-white' : 'text-slate-500 hover:bg-slate-100'"
+    :disabled="mode === 'practice' && !selectedParts.reading.includes(exercise.order)"
+    @click="readingPart = exercise.order"
+  >
+    Part {{ exercise.order }}
+  </button>
+</div>
 <article class="max-h-[calc(100vh-150px)] overflow-auto border-r border-slate-200 bg-[#f8f8ff] p-6 sm:p-9">
 <p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Part 1 · Reading passage 1</p>
 <h1 class="mt-3 text-3xl font-extrabold">{{ currentReadingExercise?.title }}</h1>
