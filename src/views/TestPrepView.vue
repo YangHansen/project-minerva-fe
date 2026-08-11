@@ -98,17 +98,31 @@ const toggleSelectedPart = (part: number) => {
     ? current.filter((value) => value !== part)
     : [...current, part].sort((a, b) => a - b)
 }
-const listeningExercise = computed(() => exercises.value.find((item) => item.section === 'listening'))
-const readingExercise = computed(() => exercises.value.find((item) => item.section === 'reading'))
+const listeningExercises = computed(() =>
+  exercises.value
+    .filter(item => item.section === 'listening')
+    .sort((a, b) => a.order - b.order)
+)
+const readingExercises = computed(() =>
+  exercises.value
+    .filter(item => item.section === 'reading')
+    .sort((a, b) => a.order - b.order)
+)
+const currentListeningExercise = computed(() =>
+  listeningExercises.value[listeningPart.value - 1]
+)
+const currentReadingExercise = computed(() =>
+  readingExercises.value[readingPart.value - 1]
+)
 const writingExercises = computed(() => exercises.value.filter((item) => item.section === 'writing').sort((a, b) => a.order - b.order))
 const speakingExercises = computed(() => exercises.value.filter((item) => item.section === 'speaking').sort((a, b) => a.order - b.order))
-const listeningLabels = computed(() => listeningExercise.value?.questions.map((item) => item.questionText) || [])
-const readingQuestionItems = computed(() => readingExercise.value?.questions.map((item) => ({ text: item.questionText, type: item.type, options: item.options })) || [])
-const readingParagraphs = computed(() => (readingExercise.value?.content.split('\n').filter(Boolean) || []).map((line) => {
+const listeningLabels = computed(() => currentListeningExercise.value?.questions.map((item) => item.questionText) || [])
+const readingQuestionItems = computed(() => currentReadingExercise.value?.questions.map((item) => ({ text: item.questionText, type: item.type, options: item.options })) || [])
+const readingParagraphs = computed(() => (currentReadingExercise.value?.content.split('\n').filter(Boolean) || []).map((line) => {
   const match = line.match(/^([A-E])\.\s*(.*)$/s)
   return match ? { letter: match[1], body: match[2] } : { letter: '', body: line }
 }))
-const listeningAudioUrl = computed(() => mediaUrl(listeningExercise.value?.audioUrl))
+const listeningAudioUrl = computed(() => mediaUrl(currentListeningExercise.value?.audioUrl))
 const writingPrompt = (task: 1 | 2) => writingExercises.value[task - 1]?.content || ''
 const speakingPrompt = (part: number) => speakingExercises.value[part - 1]?.content || ''
 const formatTime = computed(() => `${String(Math.floor(remaining.value / 60)).padStart(2, '0')}:${String(remaining.value % 60).padStart(2, '0')}`)
@@ -119,7 +133,7 @@ const answeredCount = computed(() => {
   if (currentSkill.value === 'Writing') return Number(Boolean(writingAnswers.value[1].trim())) + Number(Boolean(writingAnswers.value[2].trim()))
   return Number(recordingSaved.value)
 })
-const totalQuestions = computed(() => currentSkill.value === 'Listening' ? listeningExercise.value?.questions.length || 5 : currentSkill.value === 'Reading' ? readingExercise.value?.questions.length || 8 : currentSkill.value === 'Writing' ? 2 : 3)
+const totalQuestions = computed(() => currentSkill.value === 'Listening' ? currentListeningExercise.value?.questions.length || 5 : currentSkill.value === 'Reading' ? currentReadingExercise.value?.questions.length || 8 : currentSkill.value === 'Writing' ? 2 : 3)
 const combinedStrengths = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.strengths || []))].slice(0, 5))
 const combinedImprovements = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.improvements || []))].slice(0, 5))
 
@@ -185,7 +199,7 @@ const toggleReview = (number: number) => { reviewed.value = reviewed.value.inclu
 
 const playListening = () => {
   if (playing.value) { speechSynthesis.cancel(); playing.value = false; return }
-  const script = listeningExercise.value?.content || ''
+  const script = currentListeningExercise.value?.content || ''
   const utterance = new SpeechSynthesisUtterance(script)
   utterance.rate = 0.86
   utterance.onend = () => { playing.value = false; audioProgress.value = 100 }
@@ -607,7 +621,7 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 </div>
 <div class="mx-auto w-full max-w-6xl flex-1 p-6 sm:p-9">
 <p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Part 1 · Questions 1–{{ listeningLabels.length }}</p>
-<h1 class="mt-3 text-2xl font-extrabold">{{ listeningExercise?.title }}</h1>
+<h1 class="mt-3 text-2xl font-extrabold">{{ currentListeningExercise?.title }}</h1>
 <p class="mt-5 text-sm italic text-slate-500">Complete the form. Write NO MORE THAN THREE WORDS AND/OR A NUMBER for each answer.</p>
 <div class="mt-7 overflow-hidden rounded-2xl border border-slate-200">
 <div v-for="(label,index) in listeningLabels" :key="label" class="grid border-b border-slate-200 last:border-0 sm:grid-cols-[1fr_1.4fr]">
@@ -624,7 +638,7 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
     <section v-else-if="currentSkill === 'Reading'" class="grid min-h-0 flex-1 lg:grid-cols-2">
 <article class="max-h-[calc(100vh-150px)] overflow-auto border-r border-slate-200 bg-[#f8f8ff] p-6 sm:p-9">
 <p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Part 1 · Reading passage 1</p>
-<h1 class="mt-3 text-3xl font-extrabold">{{ readingExercise?.title }}</h1>
+<h1 class="mt-3 text-3xl font-extrabold">{{ currentReadingExercise?.title }}</h1>
 <p class="mt-2 text-sm italic text-slate-500">Spend about 20 minutes on Questions 1–{{ readingQuestionItems.length }}.</p>
 <div class="mt-7 space-y-6 text-sm leading-8 text-slate-700">
 <p v-for="paragraph in readingParagraphs" :key="paragraph.letter">
