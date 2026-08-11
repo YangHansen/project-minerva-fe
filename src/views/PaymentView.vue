@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Check, CheckCircle2, Coins, CreditCard, LockKeyhole, Sparkles } from 'lucide-vue-next'
 import { useAppState } from '../composables/useAppState'
@@ -7,23 +7,35 @@ import { apiRequest } from '../api'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 
-const packs = [
+interface Pack { id: string; name: string; tokens: number; price: string; description: string; badge: string }
+// ponytail: fallback mirrors the backend packs so the page renders offline
+const fallbackPacks: Pack[] = [
   { id: 'starter', name: 'Starter', tokens: 10, price: '$4.99', description: 'A focused boost for one application.', badge: '' },
   { id: 'momentum', name: 'Momentum', tokens: 30, price: '$11.99', description: 'Great for an active application season.', badge: 'Most popular' },
   { id: 'focus', name: 'Focus', tokens: 60, price: '$19.99', description: 'Extra support across several folders.', badge: '' },
-] as const
+]
+const packs = ref<Pack[]>(fallbackPacks)
 
-const selectedPackId = ref<(typeof packs)[number]['id']>('momentum')
+const selectedPackId = ref<string>('momentum')
 const processing = ref(false)
 const complete = ref(false)
 const cardholderName = ref('')
 const cardNumber = ref('')
 const expiryDate = ref('')
 const cvc = ref('')
-const selectedPack = computed(() => packs.find((pack) => pack.id === selectedPackId.value) ?? packs[1])
+const selectedPack = computed(() => packs.value.find((pack) => pack.id === selectedPackId.value) ?? packs.value[1] ?? fallbackPacks[1])
 const router = useRouter()
 const { tokenBalance, toast } = useAppState()
 const projectedBalance = computed(() => tokenBalance.value + (complete.value ? 0 : selectedPack.value.tokens))
+
+onMounted(async () => {
+  try {
+    const result = await apiRequest<{ packs: Pack[] }>('/api/pricing/packs')
+    if (Array.isArray(result.packs) && result.packs.length) packs.value = result.packs
+  } catch {
+    // keep local fallback on any failure
+  }
+})
 
 const digitsOnly = (value: string, max: number) => value.replace(/\D/g, '').slice(0, max)
 const formatCardNumber = (value: string) => digitsOnly(value, 16).replace(/(.{4})/g, '$1 ').trim()
