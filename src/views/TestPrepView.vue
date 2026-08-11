@@ -30,14 +30,13 @@ interface TranscriptionHistoryItem {
   createdAt: string
 }
 
-const { practiceResult, toast, selectedId, syncAiTokenBalance, getScholarship } = useAppState()
+const { practiceResult, toast, selectedId, syncAiTokenBalance, getScholarship, completedIeltsSimulationSets } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
 const stage = ref<Stage>('catalog')
 const currentSkill = ref<Skill>('Listening')
 const mode = ref<Mode>('simulation')
 const fullTest = ref(false)
 const simulationSet = ref(1)
-const completedSimulationSets = ref<number[]>(JSON.parse(localStorage.getItem('minerva-ielts-simulation-sets') || '[]'))
 const selectedParts = ref({
   listening: [1, 2, 3, 4],
   reading: [1, 2, 3],
@@ -175,7 +174,6 @@ const loadTranscriptionHistory = async () => {
   }
 }
 
-watch(completedSimulationSets, (sets) => localStorage.setItem('minerva-ielts-simulation-sets', JSON.stringify(sets)), { deep: true })
 watch(speakingPart, (part) => { recordingSaved.value = speakingRecordings.has(part) })
 
 const resetAttempt = () => {
@@ -214,7 +212,7 @@ const chooseSkill = (skill: Skill, requestedMode: Mode) => {
   stage.value = 'mode'
 }
 const chooseSimulationSet = (set: number) => {
-  if (set > 1 && !completedSimulationSets.value.includes(set - 1)) { toast(`Complete Simulation Set ${set - 1} to unlock this set.`, 'info'); return }
+  if (set > 1 && !completedIeltsSimulationSets.value.includes(set - 1)) { toast(`Complete Simulation Set ${set - 1} to unlock this set.`, 'info'); return }
   resetAttempt()
   currentSkill.value = 'Listening'; fullTest.value = true; simulationSet.value = set; mode.value = 'simulation'; timeLimit.value = 170; stage.value = 'mode'
 }
@@ -393,7 +391,7 @@ const submitTest = async (allowIncomplete = false) => {
       completedAt: new Date().toISOString(),
       explanation: evaluations[0]?.summary || 'Unofficial simulation result. Review flagged questions and practise under timed conditions.',
     }
-    if (fullTest.value && mode.value === 'simulation' && !completedSimulationSets.value.includes(simulationSet.value)) completedSimulationSets.value.push(simulationSet.value)
+    if (fullTest.value && mode.value === 'simulation' && !completedIeltsSimulationSets.value.includes(simulationSet.value)) completedIeltsSimulationSets.value.push(simulationSet.value)
     toast(`IELTS ${mode.value} result saved to ${selected.value?.name}.`)
     stage.value = 'results'
   } catch (error) {
@@ -545,17 +543,17 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <h2 class="mt-2 text-2xl font-extrabold text-[#17136b]">Three full-test simulation sets</h2>
 <p class="mt-2 text-sm text-slate-500">Finish each set to unlock the next realistic full IELTS simulation.</p>
 </div>
-<span class="rounded-full bg-violet-50 px-3 py-1.5 text-xs font-extrabold text-[#5b45f5]">{{ completedSimulationSets.length }}/3 completed</span>
+<span class="rounded-full bg-violet-50 px-3 py-1.5 text-xs font-extrabold text-[#5b45f5]">{{ completedIeltsSimulationSets.length }}/3 completed</span>
 </div>
 <div class="mt-6 grid gap-4 md:grid-cols-3">
-<button v-for="set in [1, 2, 3]" :key="set" class="relative min-h-44 rounded-2xl border p-5 text-left" :class="set > 1 && !completedSimulationSets.includes(set - 1) ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400' : 'border-violet-200 bg-white text-[#17136b] hover:border-[#5b45f5]'" :disabled="set > 1 && !completedSimulationSets.includes(set - 1)" @click="chooseSimulationSet(set)">
-<span class="grid size-10 place-items-center rounded-xl" :class="set > 1 && !completedSimulationSets.includes(set - 1) ? 'bg-slate-200' : 'bg-violet-100 text-[#5b45f5]'">
-<LockKeyhole v-if="set > 1 && !completedSimulationSets.includes(set - 1)" :size="19" />
+<button v-for="set in [1, 2, 3]" :key="set" class="relative min-h-44 rounded-2xl border p-5 text-left" :class="set > 1 && !completedIeltsSimulationSets.includes(set - 1) ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400' : 'border-violet-200 bg-white text-[#17136b] hover:border-[#5b45f5]'" :disabled="set > 1 && !completedIeltsSimulationSets.includes(set - 1)" @click="chooseSimulationSet(set)">
+<span class="grid size-10 place-items-center rounded-xl" :class="set > 1 && !completedIeltsSimulationSets.includes(set - 1) ? 'bg-slate-200' : 'bg-violet-100 text-[#5b45f5]'">
+<LockKeyhole v-if="set > 1 && !completedIeltsSimulationSets.includes(set - 1)" :size="19" />
 <Grid2X2 v-else :size="19" />
 </span>
 <p class="mt-5 text-lg font-extrabold">Simulation Set {{ set }}</p>
-<p class="mt-2 text-sm" :class="set > 1 && !completedSimulationSets.includes(set - 1) ? 'text-slate-400' : 'text-slate-500'">{{ set > 1 && !completedSimulationSets.includes(set - 1) ? `Complete Set ${set - 1} to unlock` : completedSimulationSets.includes(set) ? 'Completed · take again anytime' : 'Full IELTS test · 170 minutes' }}</p>
-<span v-if="completedSimulationSets.includes(set)" class="mt-4 inline-flex items-center gap-1 text-xs font-extrabold text-emerald-600">
+<p class="mt-2 text-sm" :class="set > 1 && !completedIeltsSimulationSets.includes(set - 1) ? 'text-slate-400' : 'text-slate-500'">{{ set > 1 && !completedIeltsSimulationSets.includes(set - 1) ? `Complete Set ${set - 1} to unlock` : completedIeltsSimulationSets.includes(set) ? 'Completed · take again anytime' : 'Full IELTS test · 170 minutes' }}</p>
+<span v-if="completedIeltsSimulationSets.includes(set)" class="mt-4 inline-flex items-center gap-1 text-xs font-extrabold text-emerald-600">
 <Check :size="15" />Completed</span>
 </button>
 </div>

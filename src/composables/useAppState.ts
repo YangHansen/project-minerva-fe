@@ -162,9 +162,50 @@ const practiceResult = computed<PracticeResult | null>({
   get: () => selectedId.value ? practiceByScholarship.value[selectedId.value] || null : null,
   set: (value) => { if (selectedId.value && value) practiceByScholarship.value[selectedId.value] = value },
 })
+const completedIeltsSimulationSets = ref<number[]>(read<number[]>('minerva-ielts-simulation-sets', []))
 persist('minerva-saved', savedIds); persist('minerva-selected', selectedId); persist('minerva-applications', applicationIds); persist('minerva-checklists', checklistsByScholarship)
 persist('minerva-scholarship-notes', scholarshipNotes); persist('minerva-documents', documentsByScholarship)
 persist('minerva-profile', profile); persist('minerva-session', session); persist('minerva-booking', booking); persist('minerva-token-balance', tokenBalance); persist('minerva-practice-by-scholarship', practiceByScholarship)
+persist('minerva-ielts-simulation-sets', completedIeltsSimulationSets)
+
+let ieltsSyncTimer: number | null = null
+let ieltsSyncInFlight = false
+const syncIeltsProgress = () => {
+  if (ieltsSyncTimer !== null) window.clearTimeout(ieltsSyncTimer)
+  ieltsSyncTimer = window.setTimeout(async () => {
+    ieltsSyncTimer = null
+    if (ieltsSyncInFlight) return
+    ieltsSyncInFlight = true
+    try {
+      await apiRequest('/api/ielts/progress', {
+        method: 'PUT',
+        body: {
+          completedIeltsSimulationSets: completedIeltsSimulationSets.value,
+          ieltsPracticeResults: Object.entries(practiceByScholarship.value).map(([scholarshipId, item]) => ({ ...item, scholarshipId })),
+        },
+      })
+    } catch {
+      // ponytail: retry on next state change; unsynced local data survives as fallback
+    } finally {
+      ieltsSyncInFlight = false
+    }
+  }, 800)
+}
+watch([completedIeltsSimulationSets, practiceByScholarship], syncIeltsProgress, { deep: true })
+
+// ponytail: server is source of truth on login; on failure keep the local snapshot
+const loadIeltsProgress = async () => {
+  try {
+    const result = await apiRequest<{ completedIeltsSimulationSets?: number[]; ieltsPracticeResults?: PracticeResult[] }>('/api/ielts/progress')
+    if (Array.isArray(result.completedIeltsSimulationSets)) completedIeltsSimulationSets.value = result.completedIeltsSimulationSets
+    for (const item of result.ieltsPracticeResults || []) {
+      const entry = item as PracticeResult & { scholarshipId?: string }
+      if (entry?.scholarshipId) practiceByScholarship.value[entry.scholarshipId] = { type: entry.type, score: entry.score, completedAt: entry.completedAt, explanation: entry.explanation }
+    }
+  } catch {
+    // non-fatal; local values kept
+  }
+}
 
 const toasts = ref<{ id: number; message: string; tone: 'success' | 'info' }[]>([])
 let toastId = 0
@@ -475,6 +516,7 @@ export function useAppState() {
     booking.value = null
     tokenBalance.value = 0
     practiceByScholarship.value = {}
+    completedIeltsSimulationSets.value = []
     workspaceError.value = ''
     for (const key of [
       'minerva-saved', 'minerva-selected', 'minerva-applications', 'minerva-checklists',
@@ -560,6 +602,7 @@ export function useAppState() {
     backendApplicationIds, workspaceHydrating, workspaceError, hydrateWorkspace,
     profile, session, booking, tokenBalance, practiceResult, progress, documentProgress, toasts, toast, syncAiTokenBalance, resetUserState, toggleSaved, startApplication, removeApplication, selectScholarship,
     scholarships, getScholarship, loadScholarshipCatalog, catalogLoading, catalogError,
+    completedIeltsSimulationSets, loadIeltsProgress,
     getChecklist, getProgress, getDocuments, getDocument, addChecklistItem, updateChecklistItem, deleteChecklistItem, addDocument, saveDocument, deleteDocument, createDocumentVersion, restoreDocumentVersion, saveScholarshipNotes, addTokens,
   }
 }
