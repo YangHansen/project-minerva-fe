@@ -680,9 +680,9 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
   </button>
 </div>
 <article class="max-h-[calc(100vh-150px)] overflow-auto border-r border-slate-200 bg-[#f8f8ff] p-6 sm:p-9">
-<p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Part 1 · Reading passage 1</p>
+<p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Part {{ readingPart }} · Reading passage {{ readingPart }}</p>
 <h1 class="mt-3 text-3xl font-extrabold">{{ currentReadingExercise?.title }}</h1>
-<p class="mt-2 text-sm italic text-slate-500">Spend about 20 minutes on Questions 1–{{ readingQuestionItems.length }}.</p>
+<p class="mt-2 text-sm italic text-slate-500">{{ currentReadingExercise?.instruction }}</p>
 <div class="mt-7 space-y-6 text-sm leading-8 text-slate-700">
 <p v-for="paragraph in readingParagraphs" :key="paragraph.letter">
 <b>{{ paragraph.letter }}.</b> {{ paragraph.body }}</p>
@@ -694,11 +694,11 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <div class="mt-7 grid gap-5">
 <label v-for="(question,index) in readingQuestionItems" :key="question.text" class="flex items-center gap-3 text-sm">
 <span class="grid size-8 shrink-0 place-items-center rounded-full bg-[#5b45f5] text-xs font-extrabold text-white">{{ index + 1 }}</span>
-<select v-if="question.type === 'matching' || question.type === 'mcq'" v-model="readingAnswers[index]" class="w-24 rounded-lg border border-slate-300 px-3 py-2">
+<select v-if="question.type === 'matching' || question.type === 'mcq'" v-model="readingAnswers[readingPart][index]" class="w-24 rounded-lg border border-slate-300 px-3 py-2">
 <option value="">—</option>
 <option v-for="option in question.options" :key="option" :value="option">{{ option }}</option>
 </select>
-<input v-else v-model="readingAnswers[index]" class="w-40 rounded-lg border border-slate-300 px-3 py-2" />
+<input v-else v-model="readingAnswers[readingPart][index]" class="w-40 rounded-lg border border-slate-300 px-3 py-2" />
 <span>{{ question.text }}</span>
 </label>
 </div>
