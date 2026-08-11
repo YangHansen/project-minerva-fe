@@ -153,6 +153,17 @@ const fallbackSummary = computed<InterviewSummary>(() => {
   }
 })
 const displayedSummary = computed(() => summary.value || fallbackSummary.value)
+const analyzedAnswers = computed(() => questions.value.flatMap((item, index) => {
+  const answer = answerResults.value[item.id]
+  return answer ? [{ question: item, index, answer }] : []
+}))
+const answerScore = (evaluation: AnswerEvaluation) => average([
+  evaluation.relevance,
+  evaluation.clarity,
+  evaluation.structure,
+  evaluation.specificity,
+  evaluation.scholarshipAlignment,
+])
 const formatHistoryDate = (value?: string) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—'
 const loadInterviewHistory = async () => {
   historyLoading.value = true
@@ -512,13 +523,25 @@ onBeforeUnmount(() => {
           </div>
           <article v-if="selectedHistorySession" class="mt-5 rounded-2xl border border-violet-100 bg-violet-50/60 p-5">
             <div class="flex flex-wrap items-center justify-between gap-2"><div><p class="text-lg font-extrabold text-[#17136b]">{{ selectedHistorySession.scholarshipName }}</p><p class="text-xs text-slate-500">{{ formatHistoryDate(selectedHistorySession.completedAt || selectedHistorySession.createdAt) }}</p></div><span class="rounded-full bg-white px-3 py-1 text-xs font-extrabold text-[#5b45f5]">{{ selectedHistorySession.status }}</span></div>
-            <div v-if="selectedHistorySession.aggregate" class="mt-5 grid gap-3 sm:grid-cols-3"><div class="rounded-xl bg-white p-4"><p class="text-xs font-bold text-slate-400">AI overall score</p><strong class="mt-1 block text-2xl text-[#5b45f5]">{{ selectedHistorySession.aggregate.overall ?? '—' }}</strong></div><div class="rounded-xl bg-white p-4 sm:col-span-2"><p class="text-xs font-bold text-slate-400">AI analysis</p><p class="mt-2 text-sm text-slate-600">{{ (selectedHistorySession.aggregate.highlights || []).join(' · ') || 'Review each answer below for detailed feedback.' }}</p></div></div>
+            <div v-if="selectedHistorySession.aggregate" class="mt-5 rounded-2xl bg-white p-5">
+              <div class="flex flex-wrap items-center justify-between gap-4">
+                <div><p class="text-xs font-bold uppercase tracking-wider text-slate-400">Overall analysis</p><strong class="mt-1 block text-3xl text-[#5b45f5]">{{ selectedHistorySession.aggregate.overall ?? '—' }}<span class="text-sm text-slate-400">/100</span></strong></div>
+                <div class="grid flex-1 grid-cols-2 gap-2 text-center sm:grid-cols-5">
+                  <div v-for="metric in [{ label: 'Relevance', value: selectedHistorySession.aggregate.relevance }, { label: 'Clarity', value: selectedHistorySession.aggregate.clarity }, { label: 'Structure', value: selectedHistorySession.aggregate.structure }, { label: 'Specificity', value: selectedHistorySession.aggregate.specificity }, { label: 'Alignment', value: selectedHistorySession.aggregate.scholarshipAlignment }]" :key="metric.label" class="rounded-lg bg-slate-50 px-2 py-2"><strong class="block text-[#17136b]">{{ metric.value ?? '—' }}</strong><span class="text-[10px] font-bold uppercase text-slate-400">{{ metric.label }}</span></div>
+                </div>
+              </div>
+              <div class="mt-4 grid gap-3 md:grid-cols-2">
+                <div class="rounded-xl bg-emerald-50 p-4"><p class="text-xs font-extrabold uppercase tracking-wider text-emerald-700">What was strong</p><ul class="mt-2 space-y-1 text-sm leading-6 text-emerald-900"><li v-for="item in selectedHistorySession.aggregate.highlights || []" :key="item">• {{ item }}</li><li v-if="!selectedHistorySession.aggregate.highlights?.length">Review the answers below for detailed strengths.</li></ul></div>
+                <div class="rounded-xl bg-amber-50 p-4"><p class="text-xs font-extrabold uppercase tracking-wider text-amber-700">Overall improvements</p><ul class="mt-2 space-y-1 text-sm leading-6 text-amber-900"><li v-for="item in selectedHistorySession.aggregate.improvements || []" :key="item">• {{ item }}</li><li v-if="!selectedHistorySession.aggregate.improvements?.length">No overall recommendations were generated.</li></ul></div>
+              </div>
+            </div>
             <p v-if="!selectedHistorySession.answers.length" class="mt-5 text-sm text-slate-500">No recorded answers in this session yet.</p>
-            <details v-for="answer in selectedHistorySession.answers" :key="answer.questionId" class="mt-4 rounded-xl bg-white p-4" open>
-              <summary class="cursor-pointer text-sm font-extrabold text-[#17136b]">{{ historyQuestion(selectedHistorySession, answer.questionId) }}</summary>
-              <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ answer.transcript.text }}</p>
-              <p class="mt-3 text-xs font-bold text-slate-500">{{ answer.durationSeconds }}s · AI clarity {{ answer.evaluation.clarity }} · relevance {{ answer.evaluation.relevance }} · structure {{ answer.evaluation.structure }}</p>
-              <p v-if="answer.evaluation.improvements.length" class="mt-2 text-sm leading-6 text-amber-800"><strong>Improve:</strong> {{ answer.evaluation.improvements.join(' · ') }}</p>
+            <details v-for="(answer, answerIndex) in selectedHistorySession.answers" :key="answer.questionId" class="mt-4 rounded-xl bg-white p-4" open>
+              <summary class="cursor-pointer text-sm font-extrabold text-[#17136b]">Question {{ answerIndex + 1 }} · {{ historyQuestion(selectedHistorySession, answer.questionId) }}</summary>
+              <div class="mt-4 rounded-xl bg-slate-50 p-4"><p class="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Your answer</p><p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ answer.transcript.text }}</p><p class="mt-2 text-xs text-slate-400">{{ answer.durationSeconds }} seconds</p></div>
+              <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5"><div v-for="metric in [{ label: 'Relevance', value: answer.evaluation.relevance }, { label: 'Clarity', value: answer.evaluation.clarity }, { label: 'Structure', value: answer.evaluation.structure }, { label: 'Specificity', value: answer.evaluation.specificity }, { label: 'Alignment', value: answer.evaluation.scholarshipAlignment }]" :key="metric.label" class="rounded-lg border border-slate-100 p-2 text-center"><strong class="block text-sm text-[#17136b]">{{ metric.value }}</strong><span class="text-[9px] font-bold uppercase text-slate-400">{{ metric.label }}</span></div></div>
+              <div class="mt-3 grid gap-3 md:grid-cols-2"><div class="rounded-xl bg-emerald-50 p-4"><p class="text-xs font-extrabold text-emerald-700">What was nice</p><ul class="mt-2 space-y-1 text-sm leading-6 text-emerald-900"><li v-for="item in answer.evaluation.highlights" :key="item">• {{ item }}</li><li v-if="!answer.evaluation.highlights.length">No specific strength was identified.</li></ul></div><div class="rounded-xl bg-amber-50 p-4"><p class="text-xs font-extrabold text-amber-700">What can be improved</p><ul class="mt-2 space-y-1 text-sm leading-6 text-amber-900"><li v-for="item in answer.evaluation.improvements" :key="item">• {{ item }}</li><li v-if="!answer.evaluation.improvements.length">No specific improvement was identified.</li></ul></div></div>
+              <div v-if="answer.evaluation.strongerAnswerExample" class="mt-3 rounded-xl border border-violet-100 bg-violet-50 p-4"><p class="text-xs font-extrabold text-[#5b45f5]">Stronger answer example</p><p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ answer.evaluation.strongerAnswerExample }}</p></div>
             </details>
           </article>
         </section>
@@ -677,6 +700,19 @@ onBeforeUnmount(() => {
 </ul>
 </article>
 </div>
+          <div class="mt-7">
+            <div class="mb-4 flex items-center justify-between gap-3"><div><p class="eyebrow">Answer review</p><h3 class="text-xl font-extrabold text-[#17136b]">Question-by-question analysis</h3></div><span class="rounded-full bg-violet-50 px-3 py-1 text-xs font-extrabold text-[#5b45f5]">{{ analyzedAnswers.length }} analyzed</span></div>
+            <p v-if="!analyzedAnswers.length" class="workspace-card p-5 text-sm text-slate-500">No recorded answers are available for detailed analysis.</p>
+            <details v-for="item in analyzedAnswers" :key="item.question.id" class="workspace-card mb-4 overflow-hidden" open>
+              <summary class="flex cursor-pointer list-none items-start justify-between gap-4 p-5"><div><span class="text-xs font-extrabold uppercase tracking-wider text-[#5b45f5]">Question {{ item.index + 1 }}</span><p class="mt-1 font-extrabold leading-6 text-[#17136b]">{{ item.question.text }}</p></div><span class="shrink-0 rounded-full bg-violet-50 px-3 py-1 text-sm font-extrabold text-[#5b45f5]">{{ answerScore(item.answer.evaluation) }}/100</span></summary>
+              <div class="border-t border-slate-100 p-5 pt-4">
+                <div class="rounded-xl bg-slate-50 p-4"><p class="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Your answer</p><p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ item.answer.transcript }}</p><p class="mt-2 text-xs text-slate-400">{{ item.answer.durationSeconds }} seconds</p></div>
+                <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5"><div v-for="metric in [{ label: 'Relevance', value: item.answer.evaluation.relevance }, { label: 'Clarity', value: item.answer.evaluation.clarity }, { label: 'Structure', value: item.answer.evaluation.structure }, { label: 'Specificity', value: item.answer.evaluation.specificity }, { label: 'Alignment', value: item.answer.evaluation.scholarshipAlignment }]" :key="metric.label" class="rounded-lg border border-slate-100 p-2 text-center"><strong class="block text-[#17136b]">{{ metric.value }}</strong><span class="text-[9px] font-bold uppercase text-slate-400">{{ metric.label }}</span></div></div>
+                <div class="mt-3 grid gap-3 md:grid-cols-2"><div class="rounded-xl bg-emerald-50 p-4"><p class="text-xs font-extrabold text-emerald-700">What was nice</p><ul class="mt-2 space-y-1 text-sm leading-6 text-emerald-900"><li v-for="highlight in item.answer.evaluation.highlights" :key="highlight">• {{ highlight }}</li><li v-if="!item.answer.evaluation.highlights.length">No specific strength was identified.</li></ul></div><div class="rounded-xl bg-amber-50 p-4"><p class="text-xs font-extrabold text-amber-700">What can be improved</p><ul class="mt-2 space-y-1 text-sm leading-6 text-amber-900"><li v-for="improvement in item.answer.evaluation.improvements" :key="improvement">• {{ improvement }}</li><li v-if="!item.answer.evaluation.improvements.length">No specific improvement was identified.</li></ul></div></div>
+                <div v-if="item.answer.evaluation.strongerAnswerExample" class="mt-3 rounded-xl border border-violet-100 bg-violet-50 p-4"><p class="text-xs font-extrabold text-[#5b45f5]">Stronger answer example</p><p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ item.answer.evaluation.strongerAnswerExample }}</p></div>
+              </div>
+            </details>
+          </div>
         </section>
       </div>
     </div>
