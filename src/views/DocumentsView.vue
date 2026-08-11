@@ -3,14 +3,13 @@ import { computed, ref } from 'vue'
 import { Edit3, FilePlus2, FileText, Folder, Search, Trash2, X } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import type { DocumentKind, ScholarshipDocument } from '../types'
-import { getScholarship } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseSelect from '../components/common/BaseSelect.vue'
 
 const router = useRouter()
-const { selectedId, applicationIds, documents, addDocument, deleteDocument, selectScholarship, toast } = useAppState()
+const { selectedId, applicationIds, documents, addDocument, deleteDocument, selectScholarship, toast, getScholarship } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
 const availableScholarships = computed(() => applicationIds.value.map((id) => getScholarship(id)).filter((item): item is NonNullable<typeof item> => Boolean(item)))
 const query = ref('')

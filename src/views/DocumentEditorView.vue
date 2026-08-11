@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { AlertCircle, AlignLeft, ArrowRight, Bold, Check, ChevronDown, Download, Edit3, Eraser, Highlighter, Italic, Link2, List, ListOrdered, LoaderCircle, MessageSquare, Redo2, Sparkles, Strikethrough, Underline, Undo2 } from 'lucide-vue-next'
 import type { DocumentReview, DocumentSuggestion } from '../types'
 import { ApiError, apiRequest } from '../api'
-import { getScholarship } from '../data/scholarships'
 import { chooseRewriteCandidate } from '../lib/documentRewrite'
 import { decideHighlightAction, preferEditorSelection } from '../lib/documentHighlight'
 import { exportAsDocx, exportAsPdf } from '../lib/documentExport'
@@ -15,7 +14,7 @@ type UnknownRecord = Record<string, unknown>
 
 const route = useRoute()
 const router = useRouter()
-const { selectedId, documentsByScholarship, hydrateWorkspace, saveDocument, createDocumentVersion, restoreDocumentVersion, syncAiTokenBalance, toast } = useAppState()
+const { selectedId, documentsByScholarship, hydrateWorkspace, saveDocument, createDocumentVersion, restoreDocumentVersion, syncAiTokenBalance, toast, getScholarship } = useAppState()
 const documentLocation = computed(() => {
   const documentId = String(route.params.documentId || '')
   for (const [scholarshipId, records] of Object.entries(documentsByScholarship.value)) {

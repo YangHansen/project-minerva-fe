@@ -4,7 +4,6 @@ import { Award, BellRing, CalendarDays, CheckCircle2, Clock3, Pencil, Search, St
 import BaseModal from '../components/common/BaseModal.vue'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
-import { mentors } from '../data/mentors'
 import type { Mentor } from '../types'
 import { useAppState } from '../composables/useAppState'
 
@@ -18,11 +17,11 @@ const success = ref(false)
 const managingBooking = ref(false)
 const query = ref('')
 const focus = ref('All')
-const { booking, toast, selectedId, getScholarship } = useAppState()
+const { mentors, booking, bookMentor, cancelMentorBooking, toast, selectedId, getScholarship, tokenBalance } = useAppState()
 const scholarship = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
 const minDate = computed(() => new Date().toISOString().slice(0, 10))
 const filters = ['All', 'Essay review', 'Mock interview', 'Research proposal', 'IELTS speaking']
-const bookingMentor = computed(() => booking.value ? mentors.find((mentor) => mentor.id === booking.value?.mentorId) : undefined)
+const bookingMentor = computed(() => booking.value ? mentors.value.find((mentor) => mentor.id === booking.value?.mentorId) : undefined)
 const bookingStart = computed(() => {
   if (!booking.value) return null
   const start = booking.value.time.split('-')[0].trim().replace('.', ':')
@@ -49,7 +48,7 @@ const formatTimeRange = (start: string) => {
   return `${String(hour).padStart(2, '0')}.${String(minute).padStart(2, '0')} - ${String(endHour).padStart(2, '0')}.${String(endMinute).padStart(2, '0')}`
 }
 
-const filtered = computed(() => mentors.filter((mentor) => {
+const filtered = computed(() => mentors.value.filter((mentor) => {
   const text = `${mentor.name} ${mentor.expertise} ${mentor.scholarshipExperience} ${mentor.highlight} ${mentor.services.join(' ')}`.toLowerCase()
   const scholarshipMatch = !scholarship.value || text.includes(scholarship.value.name.split(' ')[0].toLowerCase()) || text.includes(scholarship.value.country.toLowerCase()) || mentor.services.includes('Application strategy') || mentor.services.includes('Mock interview')
   return scholarshipMatch && (!query.value || text.includes(query.value.toLowerCase())) && (focus.value === 'All' || mentor.services.includes(focus.value))
@@ -68,7 +67,7 @@ function openBooking(mentor: Mentor) {
 
 function openManageBooking() {
   if (!booking.value) return
-  const mentor = mentors.find((item) => item.id === booking.value?.mentorId)
+  const mentor = mentors.value.find((item) => item.id === booking.value?.mentorId)
   if (!mentor) return
   chosen.value = mentor
   service.value = booking.value.service
@@ -81,17 +80,25 @@ function openManageBooking() {
   modal.value = true
 }
 
+const insufficientBalance = computed(() => chosen.value ? tokenBalance.value < Number(chosen.value.priceInTokens) : false)
+
 function submit() {
   if (!chosen.value || !date.value) return
-  booking.value = { mentorId: chosen.value.id, mentorName: chosen.value.name, service: service.value, date: date.value, time: formatTimeRange(time.value), notes: notes.value }
-  success.value = true
-  toast(managingBooking.value ? 'Mentor session updated.' : 'Mentor session booked locally.')
+  void bookMentor({ mentorId: chosen.value.id, mentorName: chosen.value.name, service: service.value, date: date.value, time: formatTimeRange(time.value), notes: notes.value })
+    .then(() => {
+      success.value = true
+      toast(managingBooking.value ? 'Mentor session updated.' : 'Mentor session booked.')
+    })
+    .catch(() => {
+      toast(insufficientBalance.value ? 'Not enough tokens for this mentor session.' : 'Unable to book the mentor session.', 'info')
+    })
 }
 function cancelBooking() {
   if (!booking.value || !window.confirm(`Cancel your session with ${booking.value.mentorName}?`)) return
-  booking.value = null
+  void cancelMentorBooking()
+    .then(() => toast('Mentor session cancelled.', 'info'))
+    .catch(() => toast('Unable to cancel the mentor session.', 'info'))
   modal.value = false
-  toast('Mentor session cancelled.', 'info')
 }
 </script>
 
@@ -145,7 +152,7 @@ function cancelBooking() {
         <label class="field-label">Date<input v-model="date" type="date" :min="minDate" class="field" required /></label>
         <label class="field-label">30-minute session time<select v-model="time" class="field"><option v-for="item in chosen?.availableTimes" :key="item" :value="item">{{ formatTimeRange(item) }}</option></select></label>
         <label class="field-label">Notes<textarea v-model="notes" class="field min-h-24" /></label>
-        <div class="flex flex-wrap justify-between gap-3"><button v-if="managingBooking" type="button" class="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-red-500 hover:bg-red-50" @click="cancelBooking"><Trash2 :size="16" />Cancel booking</button><button class="btn-primary ml-auto"><Users :size="16" />{{ managingBooking ? 'Save changes' : 'Book session' }}</button></div>
+        <div class="flex flex-wrap justify-between gap-3"><button v-if="managingBooking" type="button" class="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-red-500 hover:bg-red-50" @click="cancelBooking"><Trash2 :size="16" />Cancel booking</button><div class="ml-auto flex flex-col items-end gap-1"><span v-if="chosen?.priceInTokens" class="text-xs font-bold text-[#5b45f5]">Costs {{ chosen.priceInTokens }} tokens</span><span v-if="insufficientBalance" class="text-xs font-bold text-red-500">Not enough tokens</span><button class="btn-primary" :disabled="insufficientBalance"><Users :size="16" />{{ managingBooking ? 'Save changes' : 'Book session' }}</button></div></div>
       </form>
     </BaseModal>
   </main>

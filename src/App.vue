@@ -9,11 +9,12 @@ import { tailwindTheme } from './tailwindTheme'
 import { normalizeUserProfile, useAppState } from './composables/useAppState'
 import { ApiError, apiRequest } from './api'
 const route = useRoute()
-const { session, profile, tokenBalance, hydrateWorkspace, resetUserState, loadScholarshipCatalog, loadIeltsProgress } = useAppState()
+const { session, profile, tokenBalance, hydrateWorkspace, resetUserState, loadScholarshipCatalog, loadIeltsProgress, loadMentors, hydrateBooking } = useAppState()
 const hideChrome = computed(() => Boolean(route.meta.workspace || route.meta.fullscreen || route.meta.auth))
 const hideNavbar = computed(() => hideChrome.value || Boolean(session.value))
 onMounted(async () => {
   void loadScholarshipCatalog()
+  void loadMentors()
   let currentUser: { id: string; name: string; email: string; role: string; tokenBalance: number; profileCompleted: boolean }
   try {
     const result = await apiRequest<{ user: typeof currentUser }>('/api/auth/me')
@@ -35,6 +36,7 @@ onMounted(async () => {
   }
   await hydrateWorkspace()
   void loadIeltsProgress()
+  void hydrateBooking()
 })
 </script>
 

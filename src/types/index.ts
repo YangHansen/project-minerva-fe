@@ -84,7 +84,7 @@ export interface ScholarshipDocument {
   review?: DocumentReview
 }
 export interface PracticeResult { type: string; score: number; completedAt: string; explanation: string }
-export interface Mentor { id: string; name: string; initials: string; photo: string; expertise: string; scholarshipExperience: string; highlight: string; services: string[]; sessionPrice: string; availableTimes: string[]; rating: number; biography: string }
+export interface Mentor { id: string; name: string; initials: string; photo: string; expertise: string; scholarshipExperience: string; highlight: string; services: string[]; sessionPrice: string; availableTimes: string[]; rating: number; biography: string; priceInTokens?: number }
 export interface MentorBooking { mentorId: string; mentorName: string; service: string; date: string; time: string; notes: string }
 export interface Notification { id: string; title: string; read: boolean; createdAt: string }
 export interface PricingPlan { name: string; status: string; features: string[]; highlighted?: boolean }

@@ -1,7 +1,8 @@
 import { computed, ref, watch } from 'vue'
-import type { ChecklistItem, ChecklistStatus, DocumentKind, DocumentVersion, MentorBooking, MockSession, PracticeResult, Scholarship, ScholarshipDocument, UserProfile } from '../types'
+import type { ChecklistItem, ChecklistStatus, DocumentKind, DocumentVersion, Mentor, MentorBooking, MockSession, PracticeResult, Scholarship, ScholarshipDocument, UserProfile } from '../types'
 import { apiRequest } from '../api'
 import { scholarships as staticScholarships } from '../data/scholarships'
+import { mentors as staticMentors } from '../data/mentors'
 
 function read<T>(key: string, fallback: T): T {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback } catch { return fallback }
@@ -153,7 +154,55 @@ const scholarships = computed(() => {
   return [...scholarshipCatalog.value, ...staticScholarships.filter((item) => !byId.has(item.id))]
 })
 const getScholarship = (id: string) => scholarships.value.find((item) => item.id === id)
+const defaultMentorCatalog = staticMentors as Mentor[]
+const mentors = ref<Mentor[]>(defaultMentorCatalog)
+const mentorCatalogError = ref('')
+let mentorPromise: Promise<void> | null = null
+function normalizeMentor(raw: unknown): Mentor {
+  const mentor = asRecord(raw)
+  const name = String(mentor.name || 'Mentor')
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]?.toUpperCase() || '').join('')
+  const expertise = Array.isArray(mentor.expertise) ? mentor.expertise.map(String) : []
+  const experience = Array.isArray(mentor.scholarshipExperience) ? mentor.scholarshipExperience.map(String) : []
+  const price = Number(mentor.priceInTokens ?? 15)
+  return {
+    id: String(mentor.id || mentor._id || ''),
+    name,
+    initials,
+    photo: String(mentor.avatarUrl || ''),
+    expertise: expertise.join(', '),
+    scholarshipExperience: experience.join(', '),
+    highlight: String(mentor.highlight || expertise[0] || ''),
+    services: Array.isArray(mentor.services) ? mentor.services.map(String) : ['Essay review', 'Mock interview'],
+    sessionPrice: `${price} tokens`,
+    priceInTokens: price,
+    availableTimes: Array.isArray(mentor.availableTimeSlots) ? mentor.availableTimeSlots.map(String) : [],
+    rating: Number(mentor.rating || 5),
+    biography: String(mentor.biography || experience.join(', ')),
+  }
+}
+function loadMentors(force = false): Promise<void> {
+  if (mentorPromise) return mentorPromise
+  if (!force && mentors.value.length >= defaultMentorCatalog.length) return Promise.resolve()
+  mentorCatalogError.value = ''
+  mentorPromise = (async () => {
+    try {
+      const result = await apiRequest<{ mentors: unknown[] }>('/api/mentors')
+      const remote = (result.mentors || []).map(normalizeMentor)
+      const merged = [...remote]
+      const seen = new Set(remote.map((item) => item.id))
+      for (const item of defaultMentorCatalog) if (!seen.has(item.id)) merged.push(item)
+      mentors.value = merged.length ? merged : defaultMentorCatalog
+    } catch (error) {
+      mentorCatalogError.value = error instanceof Error ? error.message : 'Could not load mentors.'
+    } finally {
+      mentorPromise = null
+    }
+  })()
+  return mentorPromise
+}
 const booking = ref<MentorBooking | null>(read('minerva-booking', null))
+const bookingId = ref<string | null>(null)
 const tokenBalance = ref(Math.max(0, Number(read<number>('minerva-token-balance', 0)) || 0))
 const recommendedScholarshipIds = ref<string[]>(read('minerva-ai-recommendations', []))
 const legacyPracticeResult = read<PracticeResult | null>('minerva-practice', null)
@@ -498,6 +547,58 @@ export function useAppState() {
       .catch((error) => { workspaceError.value = error instanceof Error ? error.message : 'Unable to save application notes.' })
   }
 
+  const bookMentor = async (payload: MentorBooking) => {
+    const previous = booking.value
+    booking.value = payload
+    try {
+      const result = await apiRequest<{ booking: UnknownRecord; tokenBalance?: number }>(`/api/mentors/${encodeURIComponent(payload.mentorId)}/bookings`, { method: 'POST', body: payload })
+      syncAiTokenBalance(result)
+      bookingId.value = String(result.booking?.id || '')
+      return result.booking
+    } catch (error) {
+      booking.value = previous
+      throw error
+    }
+  }
+  const cancelMentorBooking = async () => {
+    const id = bookingId.value
+    const previous = booking.value
+    booking.value = null
+    bookingId.value = null
+    if (!id) return
+    try {
+      const result = await apiRequest<Record<string, unknown>>(`/api/bookings/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      syncAiTokenBalance(result)
+    } catch (error) {
+      booking.value = previous
+      bookingId.value = id
+      throw error
+    }
+  }
+  const hydrateBooking = async () => {
+    try {
+      const result = await apiRequest<{ bookings: unknown[] }>('/api/bookings')
+      const bookings = result.bookings || []
+      const current = bookings.find((raw) => {
+        const entry = asRecord(raw)
+        return entry.status === 'approved' || entry.status === 'pending'
+      })
+      if (!current) return
+      const entry = asRecord(current)
+      booking.value = {
+        mentorId: String(entry.mentorId || ''),
+        mentorName: String(entry.mentorName || ''),
+        service: String(entry.service || ''),
+        date: String(entry.date || ''),
+        time: String(entry.time || ''),
+        notes: String(entry.notes || ''),
+      }
+      bookingId.value = String(entry.id || '')
+    } catch {
+      // keep the last local booking on transient failure
+    }
+  }
+
   const resetUserState = () => {
     workspaceGeneration += 1
     workspaceHydrationPromise = null
@@ -516,7 +617,11 @@ export function useAppState() {
     catalogError.value = ''
     catalogLoading.value = false
     catalogPromise = null
+    mentors.value = defaultMentorCatalog
+    mentorCatalogError.value = ''
+    mentorPromise = null
     booking.value = null
+    bookingId.value = null
     tokenBalance.value = 0
     recommendedScholarshipIds.value = []
     practiceByScholarship.value = {}
@@ -611,6 +716,7 @@ export function useAppState() {
     profile, session, booking, tokenBalance, practiceResult, progress, documentProgress, toasts, toast, syncAiTokenBalance, resetUserState, toggleSaved, startApplication, removeApplication, selectScholarship, setRecommendedScholarships,
     scholarships, getScholarship, loadScholarshipCatalog, catalogLoading, catalogError,
     completedIeltsSimulationSets, loadIeltsProgress,
+    mentors, loadMentors, mentorCatalogError, bookingId, bookMentor, cancelMentorBooking, hydrateBooking,
     getChecklist, getProgress, getDocuments, getDocument, addChecklistItem, updateChecklistItem, deleteChecklistItem, addDocument, saveDocument, deleteDocument, createDocumentVersion, restoreDocumentVersion, saveScholarshipNotes, addTokens,
   }
 }
