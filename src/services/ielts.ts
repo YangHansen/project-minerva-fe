@@ -13,6 +13,7 @@ export interface IeltsExercise {
   id: string
   section: IeltsSection
   title: string
+  instruction: string  // Per-part instructions from backend
   content: string
   audioUrl: string | null
   order: number
