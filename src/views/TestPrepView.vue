@@ -288,8 +288,14 @@ const evaluateSpeaking = async () => {
   }))
 }
 const firstIncompleteFullSkill = (): Skill | null => {
-  if (listeningAnswers.value.some((answer) => !answer.trim())) return 'Listening'
-  if (readingAnswers.value.some((answer) => !answer.trim())) return 'Reading'
+  for (const part of [1, 2, 3, 4]) {
+    const answers = listeningAnswers.value[part] || []
+    if (answers.some(answer => !answer.trim())) return 'Listening'
+  }
+  for (const part of [1, 2, 3]) {
+    const answers = readingAnswers.value[part] || []
+    if (answers.some(answer => !answer.trim())) return 'Reading'
+  }
   if (!writingAnswers.value[1].trim() || !writingAnswers.value[2].trim()) return 'Writing'
   if ([1, 2, 3].some((part) => !speakingRecordings.has(part))) return 'Speaking'
   return null
@@ -315,10 +321,12 @@ const submitTest = async (allowIncomplete = false) => {
   serverPercent.value = null
   try {
     const autoScored = exercises.value
-      .filter((item) => (fullTest.value || currentSkill.value === 'Listening' || currentSkill.value === 'Reading') && (item.section === 'listening' || item.section === 'reading'))
-      .map((item) => ({
+      .filter(item => (fullTest.value || currentSkill.value === 'Listening' || currentSkill.value === 'Reading') && (item.section === 'listening' || item.section === 'reading'))
+      .map(item => ({
         exerciseId: item.id,
-        answers: item.section === 'listening' ? listeningAnswers.value : readingAnswers.value,
+        answers: item.section === 'listening'
+          ? listeningAnswers.value[item.order] || []
+          : readingAnswers.value[item.order] || []
       }))
     if (autoScored.length) {
       const submissions = await submitIeltsSet(simulationSet.value, autoScored)
