@@ -7,6 +7,7 @@ import {
 } from 'lucide-vue-next'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
+import BaseModal from '../components/common/BaseModal.vue'
 import { useAppState } from '../composables/useAppState'
 import { getScholarship } from '../data/scholarships'
 import {
@@ -46,6 +47,7 @@ const recordingSaved = ref(false)
 const resultScore = ref(0)
 const submitting = ref(false)
 const aiError = ref('')
+const showIeltsInfo = ref(false)
 const estimatedBand = ref<number | null>(null)
 const serverPercent = ref<number | null>(null)
 const aiEvaluations = ref<IeltsAiEvaluation[]>([])
@@ -348,11 +350,30 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <h1 class="mt-2 text-2xl font-extrabold text-[#17136b]">IELTS Test Prep</h1>
 <p class="mt-2 max-w-2xl text-xs leading-5 text-slate-500">Choose a skill to practise at your own pace, or take a timed simulation when you are ready for a test-day style experience.</p>
 </div>
-<span class="grid size-16 place-items-center rounded-2xl bg-[#5b45f5] text-white shadow-[0_12px_24px_rgba(91,69,245,.22)]">
+<button type="button" class="grid size-16 place-items-center rounded-2xl bg-[#5b45f5] text-white shadow-[0_12px_24px_rgba(91,69,245,.22)] transition hover:bg-[#4232e2] hover:cursor-pointer" @click="showIeltsInfo = true" aria-label="What is IELTS?">
 <BookOpenCheck :size="29" />
-</span>
+</button>
 </div>
 </section>
+
+<BaseModal :open="showIeltsInfo" title="What is IELTS?" @close="showIeltsInfo = false">
+  <div class="space-y-5 text-sm text-slate-600">
+    <p>IELTS (International English Language Testing System) measures English proficiency for study, work, or migration. It includes Listening, Reading, Writing, and Speaking sections.</p>
+    <div class="rounded-2xl bg-slate-50 p-4 text-slate-700">
+      <h3 class="text-sm font-bold text-slate-900">General exam format</h3>
+      <ul class="mt-3 space-y-2 list-disc pl-5 text-slate-600">
+        <li><strong>Listening</strong>: 4 parts, about 30 minutes.</li>
+        <li><strong>Reading</strong>: 3 passages, 40 questions, 60 minutes.</li>
+        <li><strong>Writing</strong>: 2 tasks, 60 minutes.</li>
+        <li><strong>Speaking</strong>: 3 parts, 11–14 minutes.</li>
+      </ul>
+    </div>
+    <p>This app lets you practise each section individually or take a full, test-day style simulation when you are ready.</p>
+    <div class="mt-6 text-right">
+      <button type="button" class="rounded-lg bg-[#5b45f5] px-4 py-2 text-sm font-extrabold text-white transition hover:bg-[#4232e2]" @click="showIeltsInfo = false">I'm ready</button>
+    </div>
+  </div>
+</BaseModal>
 
           <section class="mt-5 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
 <div class="flex flex-wrap items-center justify-between gap-4">
