@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ArrowRight, CheckCircle2, Eye, EyeOff } from 'lucide-vue-next'
 import { useAppState } from '../composables/useAppState'
 import { apiRequest } from '../api'
+import GoogleSignInButton from '../components/common/GoogleSignInButton.vue'
 
 const name = ref('')
 const email = ref('')
@@ -73,6 +74,8 @@ const submit = async () => {
           <label class="mt-1 flex items-start gap-3 text-sm leading-6 text-slate-600"><input v-model="terms" type="checkbox" class="mt-1 accent-[#5b45f5]" /><span>I agree to the Minerva terms and privacy policy.</span></label>
           <ul v-if="errors.length" class="rounded-xl bg-red-50 p-4 text-xs text-red-700"><li v-for="item in errors" :key="item">• {{ item }}</li></ul>
           <button class="btn-primary mt-1 w-full" type="submit" :disabled="loading">{{ loading ? 'Creating account…' : 'Create account' }}<ArrowRight :size="16" /></button>
+            <div class="my-1 flex items-center gap-3 text-[.7rem] font-extrabold uppercase tracking-[.18em] text-slate-400"><span class="h-px flex-1 bg-slate-200" /><span>or</span><span class="h-px flex-1 bg-slate-200" /></div>
+            <GoogleSignInButton label="Sign up with Google" />
         </div>
         <p class="mt-6 text-center text-sm text-slate-500">Already have an account? <RouterLink to="/login" class="font-extrabold text-[#5b45f5]">Log in</RouterLink></p>
       </form>

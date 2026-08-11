@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ArrowLeft, BarChart3, CheckCircle2, CircleStop, Clock3, Mic, Pause, Play, Sparkles, Video, Volume2 } from 'lucide-vue-next'
+import { ArrowLeft, BarChart3, CheckCircle2, CircleStop, Clock3, Mic, Pause, Play, Sparkles, Trash2, Video, Volume2 } from 'lucide-vue-next'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseSelect from '../components/common/BaseSelect.vue'
@@ -31,6 +31,7 @@ interface InterviewAnswerResponse {
   transcript: string | { text: string }
   evaluation: AnswerEvaluation
   reply?: { text: string }
+  followUp?: InterviewQuestion
   voice?: InterviewAudio
 }
 interface InterviewAggregate {
@@ -179,6 +180,15 @@ const openHistorySession = async (id: string) => {
   }
 }
 const historyQuestion = (session: InterviewHistorySession, questionId: string) => session.questions.find((item) => item.id === questionId)?.text || 'Interview question'
+const deleteInterview = async (id: string) => {
+  if (!window.confirm('Delete this interview and its saved transcript and AI analysis?')) return
+  try {
+    await apiRequest(`/api/interviews/${id}`, { method: 'DELETE' })
+    interviewHistory.value = interviewHistory.value.filter((item) => item.id !== id)
+    if (selectedHistorySession.value?.id === id) selectedHistorySession.value = null
+    toast('Interview deleted.', 'info')
+  } catch (error) { historyError.value = error instanceof Error ? error.message : 'Could not delete this interview.' }
+}
 const interviewDocuments = computed(() => interviewScholarshipId.value
   ? (documentsByScholarship.value[interviewScholarshipId.value] || []).filter((document) => document.content.trim())
   : [])
@@ -320,9 +330,12 @@ const submitRecordedAnswer = async (audio: Blob, durationSeconds: number) => {
       ...answerResults.value,
       [activeQuestion.id]: { transcript, evaluation: result.evaluation, durationSeconds, reply: result.reply?.text },
     }
+    if (result.followUp && !generatedQuestions.value.some((item) => item.id === result.followUp?.id)) {
+      generatedQuestions.value.splice(questionIndex.value + 1, 0, result.followUp)
+    }
     if (result.voice) void playKokoroVoice(result.voice)
-    toast('Answer transcribed and reviewed.')
-  } catch (error) {
+    toast(result.followUp ? 'Minerva has a follow-up question.' : 'Answer transcribed and reviewed.')
+    if (questionIndex.value < questions.value.length - 1) window.setTimeout(() => { void nextQuestion() }, 650)  } catch (error) {
     syncAiTokenBalance(error)
     aiError.value = error instanceof Error ? error.message : 'Could not transcribe this answer.'
   } finally {
@@ -491,11 +504,12 @@ onBeforeUnmount(() => {
           <p v-else-if="historyLoading && !interviewHistory.length" class="mt-5 text-sm text-slate-500">Loading saved interviews…</p>
           <p v-else-if="!interviewHistory.length" class="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">No saved interviews yet. Finish an interview with at least one recorded answer and it will appear here.</p>
           <div v-else class="mt-5 grid gap-3 lg:grid-cols-2">
-            <button v-for="item in interviewHistory" :key="item.id" class="rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-violet-300 hover:bg-violet-50" :class="selectedHistorySession?.id === item.id ? 'border-violet-400 bg-violet-50' : ''" @click="openHistorySession(item.id)">
+            <div v-for="item in interviewHistory" :key="item.id" class="relative"><button class="w-full rounded-xl border border-slate-200 bg-white p-4 pr-12 text-left transition hover:border-violet-300 hover:bg-violet-50" :class="selectedHistorySession?.id === item.id ? 'border-violet-400 bg-violet-50' : ''" @click="openHistorySession(item.id)">
               <p class="font-extrabold text-[#17136b]">{{ item.scholarshipName }}</p>
               <p class="mt-1 text-xs text-slate-500">{{ item.answerCount }}/{{ item.questionCount }} answers · {{ item.status }}</p>
               <p class="mt-2 text-xs font-bold text-slate-400">{{ formatHistoryDate(item.updatedAt) }}<span v-if="item.overall !== undefined"> · AI score {{ item.overall }}/100</span></p>
-            </button>
+            </button><button type="button" class="absolute right-3 top-3 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" title="Delete interview" @click.stop="deleteInterview(item.id)"><Trash2 :size="16" /></button>
+          </div>
           </div>
           <article v-if="selectedHistorySession" class="mt-5 rounded-2xl border border-violet-100 bg-violet-50/60 p-5">
             <div class="flex flex-wrap items-center justify-between gap-2"><div><p class="text-lg font-extrabold text-[#17136b]">{{ selectedHistorySession.scholarshipName }}</p><p class="text-xs text-slate-500">{{ formatHistoryDate(selectedHistorySession.completedAt || selectedHistorySession.createdAt) }}</p></div><span class="rounded-full bg-white px-3 py-1 text-xs font-extrabold text-[#5b45f5]">{{ selectedHistorySession.status }}</span></div>
@@ -576,9 +590,9 @@ onBeforeUnmount(() => {
             </div>
             <div class="relative grid min-h-[320px] place-items-center overflow-hidden rounded-[22px] border border-violet-200 bg-[radial-gradient(circle_at_center,#fff_0%,#f5f2ff_55%,#ebe7ff_100%)] p-5 text-center">
               <div class="flex h-full flex-col items-center justify-center">
-                <img src="/ai-interviewer.gif" alt="Animated Minerva AI interviewer" class="h-52 max-w-full object-contain drop-shadow-[0_16px_22px_rgba(64,48,180,.22)] transition" :class="aiSpeaking ? 'scale-105' : ''" />
+                <img src="/ai-interviewer.gif" alt="Animated Minerva AI interviewer" class="h-52 max-w-full object-contain mix-blend-multiply drop-shadow-[0_16px_22px_rgba(64,48,180,.22)] transition" :class="aiSpeaking ? 'scale-105' : ''" />
                 <div class="mt-2 flex items-center justify-center gap-2"><span class="text-lg font-black">Minerva AI interviewer</span><span v-if="aiSpeaking" class="rounded-full bg-violet-100 px-2 py-1 text-[.65rem] font-black uppercase tracking-wide text-[#5b45f5]">Speaking</span></div>
-                <span class="mt-1 block text-xs font-bold text-slate-400">Kokoro voice · tailored to {{ selected?.provider }}</span>
+                
                 <p v-if="voiceNotice" class="mt-2 max-w-sm text-xs font-bold leading-5 text-amber-700">{{ voiceNotice }}</p>
                 <div class="mt-4 flex items-center justify-center gap-2"><button type="button" class="rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-extrabold text-[#5b45f5]" :disabled="!latestVoice" @click="playKokoroVoice(latestVoice || undefined)"><Volume2 :size="15" />Replay voice</button></div>
               </div>
