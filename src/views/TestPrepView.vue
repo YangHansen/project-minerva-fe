@@ -128,12 +128,23 @@ const speakingPrompt = (part: number) => speakingExercises.value[part - 1]?.cont
 const formatTime = computed(() => `${String(Math.floor(remaining.value / 60)).padStart(2, '0')}:${String(remaining.value % 60).padStart(2, '0')}`)
 const wordCount = computed(() => writingAnswers.value[writingTask.value].trim() ? writingAnswers.value[writingTask.value].trim().split(/\s+/).length : 0)
 const answeredCount = computed(() => {
-  if (currentSkill.value === 'Listening') return listeningAnswers.value.filter(Boolean).length
-  if (currentSkill.value === 'Reading') return readingAnswers.value.filter(Boolean).length
+  if (currentSkill.value === 'Listening') {
+    const answers = listeningAnswers.value[listeningPart.value] || []
+    return answers.filter(Boolean).length
+  }
+  if (currentSkill.value === 'Reading') {
+    const answers = readingAnswers.value[readingPart.value] || []
+    return answers.filter(Boolean).length
+  }
   if (currentSkill.value === 'Writing') return Number(Boolean(writingAnswers.value[1].trim())) + Number(Boolean(writingAnswers.value[2].trim()))
   return Number(recordingSaved.value)
 })
-const totalQuestions = computed(() => currentSkill.value === 'Listening' ? currentListeningExercise.value?.questions.length || 5 : currentSkill.value === 'Reading' ? currentReadingExercise.value?.questions.length || 8 : currentSkill.value === 'Writing' ? 2 : 3)
+const totalQuestions = computed(() => {
+  if (currentSkill.value === 'Listening') return currentListeningExercise.value?.questions.length || 0
+  if (currentSkill.value === 'Reading') return currentReadingExercise.value?.questions.length || 0
+  if (currentSkill.value === 'Writing') return 2
+  return 3
+})
 const combinedStrengths = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.strengths || []))].slice(0, 5))
 const combinedImprovements = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.improvements || []))].slice(0, 5))
 
