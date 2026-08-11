@@ -1,6 +1,7 @@
 import { computed, ref, watch } from 'vue'
-import type { ChecklistItem, ChecklistStatus, DocumentKind, DocumentVersion, MentorBooking, MockSession, PracticeResult, ScholarshipDocument, UserProfile } from '../types'
+import type { ChecklistItem, ChecklistStatus, DocumentKind, DocumentVersion, MentorBooking, MockSession, PracticeResult, Scholarship, ScholarshipDocument, UserProfile } from '../types'
 import { apiRequest } from '../api'
+import { scholarships as staticScholarships } from '../data/scholarships'
 
 function read<T>(key: string, fallback: T): T {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback } catch { return fallback }
@@ -125,6 +126,33 @@ const checklist = computed(() => {
 const documents = computed(() => selectedId.value ? ensureDocuments(selectedId.value) : [])
 const profile = ref<UserProfile | null>(normalizeUserProfile(read<unknown>('minerva-profile', null)))
 const session = ref<MockSession | null>(read('minerva-session', null))
+
+const scholarshipCatalog = ref<Scholarship[]>([])
+const catalogLoading = ref(false)
+const catalogError = ref('')
+let catalogPromise: Promise<void> | null = null
+function loadScholarshipCatalog(): Promise<void> {
+  if (catalogPromise) return catalogPromise
+  catalogLoading.value = true
+  catalogError.value = ''
+  catalogPromise = (async () => {
+    try {
+      const result = await apiRequest<{ scholarships: Scholarship[] }>('/api/scholarships?pageSize=100')
+      scholarshipCatalog.value = Array.isArray(result.scholarships) ? result.scholarships : []
+    } catch (error) {
+      catalogError.value = error instanceof Error ? error.message : 'Could not load the scholarship catalog.'
+    } finally {
+      catalogLoading.value = false
+      catalogPromise = null
+    }
+  })()
+  return catalogPromise
+}
+const scholarships = computed(() => {
+  const byId = new Map(scholarshipCatalog.value.map((item) => [item.id, true]))
+  return [...scholarshipCatalog.value, ...staticScholarships.filter((item) => !byId.has(item.id))]
+})
+const getScholarship = (id: string) => scholarships.value.find((item) => item.id === id)
 const booking = ref<MentorBooking | null>(read('minerva-booking', null))
 const tokenBalance = ref(Math.max(0, Number(read<number>('minerva-token-balance', 0)) || 0))
 const legacyPracticeResult = read<PracticeResult | null>('minerva-practice', null)
@@ -440,6 +468,10 @@ export function useAppState() {
     documentsByScholarship.value = {}
     profile.value = null
     session.value = null
+    scholarshipCatalog.value = []
+    catalogError.value = ''
+    catalogLoading.value = false
+    catalogPromise = null
     booking.value = null
     tokenBalance.value = 0
     practiceByScholarship.value = {}
@@ -527,6 +559,7 @@ export function useAppState() {
     savedIds, applicationIds, selectedId, checklist, checklistsByScholarship, scholarshipNotes, documents, documentsByScholarship,
     backendApplicationIds, workspaceHydrating, workspaceError, hydrateWorkspace,
     profile, session, booking, tokenBalance, practiceResult, progress, documentProgress, toasts, toast, syncAiTokenBalance, resetUserState, toggleSaved, startApplication, removeApplication, selectScholarship,
+    scholarships, getScholarship, loadScholarshipCatalog, catalogLoading, catalogError,
     getChecklist, getProgress, getDocuments, getDocument, addChecklistItem, updateChecklistItem, deleteChecklistItem, addDocument, saveDocument, deleteDocument, createDocumentVersion, restoreDocumentVersion, saveScholarshipNotes, addTokens,
   }
 }

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, CalendarDays, ChevronDown, ExternalLink, FolderPlus, GraduationCap, Heart, Landmark, MapPin, Sparkles } from 'lucide-vue-next'
 import { getScholarship } from '../data/scholarships'
+import { apiRequest } from '../api'
 import { useAppState } from '../composables/useAppState'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
+import type { Scholarship } from '../types'
 
 interface DetailSection {
   id: string
@@ -18,7 +20,35 @@ interface DetailSection {
 
 const route = useRoute()
 const router = useRouter()
-const scholarship = computed(() => getScholarship(String(route.params.id)))
+
+const documentLabels: Record<string, string> = {
+  cv: 'CV',
+  transcript: 'Academic transcript',
+  passport: 'Passport copy',
+  recommendation_letter: 'Recommendation letter',
+  english_proficiency_test: 'English test certificate (IELTS/TOEFL)',
+  personal_statement: 'Personal statement',
+  motivation_letter: 'Motivation letter',
+  study_plan: 'Study plan',
+  research_proposal: 'Research proposal',
+  birth_certificate: 'Birth certificate',
+  citizenship_proof: 'Proof of citizenship',
+  proof_of_residence: 'Proof of residence',
+  study_objective: 'Study objective',
+  toefl_score: 'TOEFL score report',
+  unconditional_offer: 'Unconditional offer',
+  letter_of_acceptance_unconditional: 'Unconditional acceptance letter',
+}
+const documentLabel = (key: string) =>
+  documentLabels[key] || key.split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+
+const scholarship = ref<Scholarship | null>(getScholarship(String(route.params.id)) || null)
+onMounted(async () => {
+  try {
+    const result = await apiRequest<{ scholarship: Scholarship }>(`/api/scholarships/${encodeURIComponent(String(route.params.id))}`)
+    scholarship.value = result.scholarship
+  } catch { /* keep the static fallback when the backend is unreachable */ }
+})
 const { savedIds, toggleSaved, applicationIds, startApplication } = useAppState()
 const alreadyAdded = computed(() => Boolean(scholarship.value && applicationIds.value.includes(scholarship.value.id)))
 const openSections = ref<string[]>(['eligibility'])
@@ -44,7 +74,7 @@ const detailSections = computed<DetailSection[]>(() => {
       title: 'Eligibility',
       paragraphs: overviewParagraphs.value,
     },
-    { id: 'documents', title: 'Required Documents', items: item.requiredDocuments },
+    { id: 'documents', title: 'Required Documents', items: item.requiredDocuments.map(documentLabel) },
     {
       id: 'steps',
       title: 'Application Steps',

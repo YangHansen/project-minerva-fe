@@ -10,7 +10,6 @@ import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseModal from '../components/common/BaseModal.vue'
 import { useAppState } from '../composables/useAppState'
 import { apiRequest } from '../api'
-import { getScholarship } from '../data/scholarships'
 import {
   evaluateIeltsSpeaking, evaluateIeltsWriting, getIeltsEvaluations, getIeltsSet,
   getIeltsSubmissions, mediaUrl, submitIeltsSet,
@@ -31,7 +30,7 @@ interface TranscriptionHistoryItem {
   createdAt: string
 }
 
-const { practiceResult, toast, selectedId, syncAiTokenBalance } = useAppState()
+const { practiceResult, toast, selectedId, syncAiTokenBalance, getScholarship } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
 const stage = ref<Stage>('catalog')
 const currentSkill = ref<Skill>('Listening')

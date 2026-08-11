@@ -5,7 +5,6 @@ import BaseModal from '../components/common/BaseModal.vue'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import { mentors } from '../data/mentors'
-import { getScholarship } from '../data/scholarships'
 import type { Mentor } from '../types'
 import { useAppState } from '../composables/useAppState'
 
@@ -19,7 +18,7 @@ const success = ref(false)
 const managingBooking = ref(false)
 const query = ref('')
 const focus = ref('All')
-const { booking, toast, selectedId } = useAppState()
+const { booking, toast, selectedId, getScholarship } = useAppState()
 const scholarship = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
 const minDate = computed(() => new Date().toISOString().slice(0, 10))
 const filters = ['All', 'Essay review', 'Mock interview', 'Research proposal', 'IELTS speaking']

@@ -10,7 +10,9 @@ import {
   Globe2,
 } from "lucide-vue-next";
 import ScholarshipCard from "../components/scholarships/ScholarshipCard.vue";
-import { scholarships } from "../data/scholarships";
+import { useAppState } from "../composables/useAppState";
+
+const { scholarships } = useAppState();
 
 const activeFeature = ref(0);
 const activeDestination = ref("All");
@@ -247,7 +249,7 @@ const destinations = [
 ];
 
 const visibleScholarships = computed(() => {
-  if (activeDestination.value === "All") return scholarships.slice(0, 3);
+  if (activeDestination.value === "All") return scholarships.value.slice(0, 3);
   const countryMap: Record<string, string> = {
     USA: "United States",
     Australia: "Australia",
@@ -255,10 +257,10 @@ const visibleScholarships = computed(() => {
     China: "China",
     "South Korea": "South Korea",
   };
-  const exact = scholarships.filter((item) =>
+  const exact = scholarships.value.filter((item) =>
     item.country.includes(countryMap[activeDestination.value]),
   );
-  return exact.length ? exact.slice(0, 3) : scholarships.slice(0, 3);
+  return exact.length ? exact.slice(0, 3) : scholarships.value.slice(0, 3);
 });
 </script>
 

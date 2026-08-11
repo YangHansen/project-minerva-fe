@@ -2,12 +2,11 @@
 import { computed, ref } from 'vue'
 import { ArrowLeft, CalendarDays, Check, Edit3, Folder, Globe2, Plus, Trash2, X } from 'lucide-vue-next'
 import type { ChecklistItem } from '../types'
-import { getScholarship } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 
-const { checklist, selectedId, scholarshipNotes, addChecklistItem, updateChecklistItem, deleteChecklistItem, saveScholarshipNotes, toast } = useAppState()
+const { checklist, selectedId, scholarshipNotes, addChecklistItem, updateChecklistItem, deleteChecklistItem, saveScholarshipNotes, toast, getScholarship } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
 const days = computed(() => selected.value ? Math.max(0, Math.ceil((new Date(selected.value.deadline).getTime() - Date.now()) / 86400000)) : 0)
 const notesEditing = ref(false)

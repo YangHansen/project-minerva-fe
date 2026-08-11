@@ -2,7 +2,6 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowRight, CalendarDays, CheckCircle2, FileText, FolderOpen, Globe2, MoreVertical, Trash2, UserRoundCheck } from 'lucide-vue-next'
-import { getScholarship, scholarships } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
@@ -11,12 +10,12 @@ import BaseModal from '../components/common/BaseModal.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { selectedId, applicationIds, hydrateWorkspace, getChecklist, getProgress, getDocuments, selectScholarship, removeApplication, booking } = useAppState()
+const { selectedId, applicationIds, hydrateWorkspace, getChecklist, getProgress, getDocuments, selectScholarship, removeApplication, booking, scholarships, getScholarship } = useAppState()
 const pendingDeleteId = ref('')
 
 const folders = computed(() => {
   const ids = [...new Set([selectedId.value, ...applicationIds.value].filter((id): id is string => Boolean(id)))]
-  return scholarships
+  return scholarships.value
     .filter((item) => ids.includes(item.id))
     .sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime())
 })

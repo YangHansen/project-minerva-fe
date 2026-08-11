@@ -4,7 +4,6 @@ import { ArrowLeft, BarChart3, CheckCircle2, CircleStop, Clock3, Mic, Pause, Pla
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseSelect from '../components/common/BaseSelect.vue'
-import { getScholarship } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
 import { apiRequest } from '../api'
 
@@ -76,7 +75,7 @@ interface InterviewHistorySession {
   completedAt?: string
 }
 
-const { applicationIds, documentsByScholarship, selectScholarship, syncAiTokenBalance, toast } = useAppState()
+const { applicationIds, documentsByScholarship, selectScholarship, syncAiTokenBalance, toast, getScholarship } = useAppState()
 const stage = ref<Stage>('home')
 const interviewScholarshipId = ref('')
 const selectedDocumentTitle = ref('')

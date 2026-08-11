@@ -4,11 +4,10 @@ import { Heart } from 'lucide-vue-next'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import ScholarshipCard from '../components/scholarships/ScholarshipCard.vue'
-import { scholarships } from '../data/scholarships'
 import { useAppState } from '../composables/useAppState'
 
-const { savedIds } = useAppState()
-const savedScholarships = computed(() => scholarships.filter((item) => savedIds.value.includes(item.id)))
+const { savedIds, scholarships } = useAppState()
+const savedScholarships = computed(() => scholarships.value.filter((item) => savedIds.value.includes(item.id)))
 </script>
 
 <template>

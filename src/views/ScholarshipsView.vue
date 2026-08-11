@@ -5,11 +5,12 @@ import { GraduationCap, Search, SlidersHorizontal, Sparkles, X } from 'lucide-vu
 import ScholarshipCard from '../components/scholarships/ScholarshipCard.vue'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
-import { scholarships } from '../data/scholarships'
+import { apiRequest } from '../api'
 import { useAppState } from '../composables/useAppState'
 import type { Scholarship } from '../types'
 
 const loading = ref(true)
+const error = ref('')
 const query = ref('')
 const country = ref('')
 const level = ref('')
@@ -17,34 +18,34 @@ const major = ref('')
 const funding = ref('')
 const sort = ref<'match' | 'deadline' | 'name'>('match')
 const route = useRoute()
-const { applicationIds, session, profile } = useAppState()
+const { applicationIds, session } = useAppState()
+const scholarships = ref<Scholarship[]>([])
 
-onMounted(() => window.setTimeout(() => { loading.value = false }, 350))
-const countries = [...new Set(scholarships.map((item) => item.country))].sort()
-const levels = [...new Set(scholarships.map((item) => item.educationLevel))].sort()
-const majors = [...new Set(scholarships.map((item) => item.fieldOfStudy).filter((item) => item !== 'All fields'))].sort()
-const fundings = [...new Set(scholarships.map((item) => item.fundingType))].sort()
+onMounted(async () => {
+  try {
+    const result = await apiRequest<{ scholarships: Scholarship[] }>('/api/scholarships?pageSize=100')
+    scholarships.value = Array.isArray(result.scholarships) ? result.scholarships : []
+  } catch (reason) {
+    error.value = reason instanceof Error ? reason.message : 'Could not load scholarships.'
+  } finally {
+    loading.value = false
+  }
+})
+const countries = computed(() => [...new Set(scholarships.value.map((item) => item.country))].sort())
+const levels = computed(() => [...new Set(scholarships.value.map((item) => item.educationLevel))].sort())
+const majors = computed(() => [...new Set(scholarships.value.map((item) => item.fieldOfStudy).filter((item) => item !== 'All fields'))].sort())
+const fundings = computed(() => [...new Set(scholarships.value.map((item) => item.fundingType))].sort())
 const firstSetup = computed(() => Boolean(route.query.recommended) || Boolean(session.value && applicationIds.value.length === 0))
 const showRecommendationHighlight = computed(() => Boolean(route.query.recommended))
-const personalizedScore = (item: Scholarship) => {
-  let score = item.matchPercentage
-  const user = profile.value
-  if (!user) return score
-  if (user.destinationCountry && item.country.toLowerCase().includes(user.destinationCountry.toLowerCase())) score += 3
-  if (user.targetEducationLevel && item.educationLevel.toLowerCase().includes(user.targetEducationLevel.toLowerCase())) score += 2
-  if (user.fieldOfStudy && (item.fieldOfStudy === 'All fields' || item.fieldOfStudy.toLowerCase().includes(user.fieldOfStudy.toLowerCase()))) score += 3
-  if (user.fundingPreference && item.fundingType.toLowerCase().includes(user.fundingPreference.toLowerCase())) score += 2
-  return Math.min(99, score)
-}
-const scoredScholarships = computed(() => scholarships.map((item) => ({ ...item, matchPercentage: personalizedScore(item) })))
 const isFiltered = computed(() => Boolean(query.value || country.value || level.value || major.value || funding.value))
-const results = computed(() => scoredScholarships.value.filter((item) => {
+const results = computed(() => scholarships.value.filter((item) => {
   const haystack = `${item.name} ${item.provider} ${item.country} ${item.fieldOfStudy} ${item.program}`.toLowerCase()
   const matchesQuery = haystack.includes(query.value.trim().toLowerCase())
   const matchesMajor = !major.value || item.fieldOfStudy === major.value || item.fieldOfStudy === 'All fields'
   return matchesQuery && matchesMajor && (!country.value || item.country === country.value) && (!level.value || item.educationLevel === level.value) && (!funding.value || item.fundingType === funding.value)
 }).sort((a, b) => sort.value === 'name' ? a.name.localeCompare(b.name) : sort.value === 'deadline' ? a.deadline.localeCompare(b.deadline) : b.matchPercentage - a.matchPercentage))
 const clear = () => { query.value = ''; country.value = ''; level.value = ''; major.value = ''; funding.value = ''; sort.value = 'match' }
+const reload = () => window.location.reload()
 </script>
 
 <template>
@@ -77,6 +78,7 @@ const clear = () => { query.value = ''; country.value = ''; level.value = ''; ma
           </div>
 
           <div v-if="loading" class="scholarship-results-grid"><div v-for="n in 6" :key="n" class="h-[335px] animate-pulse rounded-3xl bg-slate-100" /></div>
+          <div v-else-if="error" class="discover-empty"><Search :size="34" /><h2>Could not load scholarships</h2><p>{{ error }}</p><button class="btn-primary" @click="reload">Retry</button></div>
           <div v-else-if="results.length" class="scholarship-results-grid"><ScholarshipCard v-for="(item, index) in results" :key="item.id" :scholarship="item" :recommended="showRecommendationHighlight && index < 3" selectable /></div>
           <div v-else class="discover-empty"><Search :size="34" /><h2>No scholarships match those filters</h2><p>Try clearing a filter or selecting a broader major.</p><button class="btn-primary" @click="clear">Clear all filters</button></div>
         </section>
