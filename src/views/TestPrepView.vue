@@ -795,7 +795,7 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 </div>
 <div v-else class="flex items-center gap-2 overflow-auto">
 <span class="mr-2 whitespace-nowrap text-sm font-extrabold">{{ currentSkill }} · {{ answeredCount }}/{{ totalQuestions }}</span>
-<button v-for="n in totalQuestions" :key="n" class="grid size-9 shrink-0 place-items-center rounded-full border text-xs font-extrabold" :class="[reviewed.includes(n) ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-slate-200', (currentSkill === 'Listening' ? listeningAnswers[n-1] : currentSkill === 'Reading' ? readingAnswers[n-1] : false) && 'bg-[#5b45f5] text-white']" @click="toggleReview(n)">{{ n }}</button>
+<button v-for="n in totalQuestions" :key="n" class="grid size-9 shrink-0 place-items-center rounded-full border text-xs font-extrabold" :class="[reviewed.includes(n) ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-slate-200', (currentSkill === 'Listening' ? (listeningAnswers[listeningPart] || [])[n-1] : currentSkill === 'Reading' ? (readingAnswers[readingPart] || [])[n-1] : false) && 'bg-[#5b45f5] text-white']" @click="toggleReview(n)">{{ n }}</button>
 <span class="ml-auto hidden items-center gap-2 text-xs text-slate-400 sm:flex">
 <CircleAlert :size="14" />Select a number to flag it for review.</span>
 </div>
