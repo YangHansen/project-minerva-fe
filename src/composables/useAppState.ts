@@ -105,7 +105,7 @@ function createDocuments(scholarshipId: string): ScholarshipDocument[] {
   return documentBlueprints.map((blueprint) => {
     const content = legacyDrafts[scholarshipId]?.[blueprint.kind] || ''
     const uploadName = legacyUploads[scholarshipId]?.[blueprint.kind] || ''
-    return { ...blueprint, content, uploadName, status: uploadName ? 'ready' : content ? 'draft' : 'missing', updatedAt: now, versions: [] }
+    return { ...blueprint, content, pages: [{ id: 'page-1', title: 'Page 1', content }], uploadName, status: uploadName ? 'ready' : content ? 'draft' : 'missing', updatedAt: now, versions: [] }
   })
 }
 
@@ -155,6 +155,7 @@ const scholarships = computed(() => {
 const getScholarship = (id: string) => scholarships.value.find((item) => item.id === id)
 const booking = ref<MentorBooking | null>(read('minerva-booking', null))
 const tokenBalance = ref(Math.max(0, Number(read<number>('minerva-token-balance', 0)) || 0))
+const recommendedScholarshipIds = ref<string[]>(read('minerva-ai-recommendations', []))
 const legacyPracticeResult = read<PracticeResult | null>('minerva-practice', null)
 const practiceByScholarship = ref<Record<string, PracticeResult>>(read('minerva-practice-by-scholarship', {}))
 if (selectedId.value && legacyPracticeResult && !practiceByScholarship.value[selectedId.value]) practiceByScholarship.value[selectedId.value] = legacyPracticeResult
@@ -165,7 +166,7 @@ const practiceResult = computed<PracticeResult | null>({
 const completedIeltsSimulationSets = ref<number[]>(read<number[]>('minerva-ielts-simulation-sets', []))
 persist('minerva-saved', savedIds); persist('minerva-selected', selectedId); persist('minerva-applications', applicationIds); persist('minerva-checklists', checklistsByScholarship)
 persist('minerva-scholarship-notes', scholarshipNotes); persist('minerva-documents', documentsByScholarship)
-persist('minerva-profile', profile); persist('minerva-session', session); persist('minerva-booking', booking); persist('minerva-token-balance', tokenBalance); persist('minerva-practice-by-scholarship', practiceByScholarship)
+persist('minerva-profile', profile); persist('minerva-session', session); persist('minerva-booking', booking); persist('minerva-token-balance', tokenBalance); persist('minerva-practice-by-scholarship', practiceByScholarship); persist('minerva-ai-recommendations', recommendedScholarshipIds)
 persist('minerva-ielts-simulation-sets', completedIeltsSimulationSets)
 
 let ieltsSyncTimer: number | null = null
@@ -242,6 +243,7 @@ const normalizeRemoteDocument = (value: unknown): ScholarshipDocument => {
     category: String(document.category || 'Other'),
     prompt: String(document.prompt || ''),
     content: String(document.content || document.contentHtml || ''),
+    pages: Array.isArray(document.pages) ? document.pages.map((page, index) => { const item = asRecord(page); return { id: String(item.id || ('page-' + (index + 1))), title: String(item.title || ('Page ' + (index + 1))), content: String(item.content || item.contentHtml || '') } }) : [],
     uploadName: String(upload.originalName || ''),
     status: document.status === 'ready' || document.status === 'draft' ? document.status : 'missing',
     updatedAt: String(document.updatedAt || new Date().toISOString()),
@@ -429,6 +431,7 @@ export function useAppState() {
         category: details.category || 'Other',
         prompt: details.prompt || 'Tailor this document to the scholarship requirements.',
         content: '',
+        pages: [{ id: 'page-1', title: 'Page 1', content: '' }],
         status: 'missing' as const,
       }
       const result = await apiRequest<{ document: unknown }>(`/api/applications/${encodeURIComponent(applicationId)}/documents`, {
@@ -450,7 +453,7 @@ export function useAppState() {
     if (document.id.startsWith('document-')) return
     await apiRequest(`/api/documents/${encodeURIComponent(document.id)}`, {
       method: 'PATCH',
-      body: { title: document.title, content: document.content, status: document.status, prompt: document.prompt },
+      body: { title: document.title, content: document.content, pages: document.pages, status: document.status, prompt: document.prompt },
     })
   }
   const deleteDocument = async (document: ScholarshipDocument) => {
@@ -515,6 +518,7 @@ export function useAppState() {
     catalogPromise = null
     booking.value = null
     tokenBalance.value = 0
+    recommendedScholarshipIds.value = []
     practiceByScholarship.value = {}
     completedIeltsSimulationSets.value = []
     workspaceError.value = ''
@@ -522,7 +526,7 @@ export function useAppState() {
       'minerva-saved', 'minerva-selected', 'minerva-applications', 'minerva-checklists',
       'minerva-scholarship-notes', 'minerva-documents', 'minerva-profile', 'minerva-session',
       'minerva-booking', 'minerva-token-balance', 'minerva-practice-by-scholarship',
-      'minerva-onboarding-draft', 'minerva-onboarding-step', 'minerva-ielts-simulation-sets',
+      'minerva-onboarding-draft', 'minerva-onboarding-step', 'minerva-ielts-simulation-sets', 'minerva-ai-recommendations',
       'minerva-checklist', 'minerva-document-drafts', 'minerva-document-uploads', 'minerva-practice',
     ]) localStorage.removeItem(key)
   }
@@ -596,11 +600,15 @@ export function useAppState() {
     delete backendApplicationStatuses.value[id]
     toast('Scholarship removed from My Scholarships.', 'info')
   }
+  const setRecommendedScholarships = (ids: string[]) => {
+    recommendedScholarshipIds.value = [...new Set(ids.filter(Boolean))].slice(0, 3)
+  }
   const selectScholarship = (id: string) => { selectedId.value = id; toast('Scholarship selected for preparation.') }
   return {
     savedIds, applicationIds, selectedId, checklist, checklistsByScholarship, scholarshipNotes, documents, documentsByScholarship,
+    recommendedScholarshipIds,
     backendApplicationIds, workspaceHydrating, workspaceError, hydrateWorkspace,
-    profile, session, booking, tokenBalance, practiceResult, progress, documentProgress, toasts, toast, syncAiTokenBalance, resetUserState, toggleSaved, startApplication, removeApplication, selectScholarship,
+    profile, session, booking, tokenBalance, practiceResult, progress, documentProgress, toasts, toast, syncAiTokenBalance, resetUserState, toggleSaved, startApplication, removeApplication, selectScholarship, setRecommendedScholarships,
     scholarships, getScholarship, loadScholarshipCatalog, catalogLoading, catalogError,
     completedIeltsSimulationSets, loadIeltsProgress,
     getChecklist, getProgress, getDocuments, getDocument, addChecklistItem, updateChecklistItem, deleteChecklistItem, addDocument, saveDocument, deleteDocument, createDocumentVersion, restoreDocumentVersion, saveScholarshipNotes, addTokens,

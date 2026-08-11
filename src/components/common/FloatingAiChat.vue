@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { AlertCircle, Bot, History, LoaderCircle, MessageCircle, Plus, RefreshCw, Send, Sparkles, Trash2, X } from 'lucide-vue-next'
 import { ApiError, apiRequest } from '../../api'
 import { useAppState } from '../../composables/useAppState'
+import type { Scholarship } from '../../types'
 
 interface ChatMessage {
   id: string
@@ -23,7 +24,7 @@ interface ChatThread {
 
 type UnknownRecord = Record<string, unknown>
 
-const { selectedId, backendApplicationIds, session, syncAiTokenBalance } = useAppState()
+const { selectedId, applicationIds, backendApplicationIds, profile, savedIds, scholarships, getScholarship, selectScholarship, session, setRecommendedScholarships, syncAiTokenBalance } = useAppState()
 const open = ref(false)
 const showHistory = ref(false)
 const input = ref('')
@@ -34,6 +35,22 @@ const loaded = ref(false)
 const error = ref('')
 const threads = ref<ChatThread[]>([])
 const activeId = ref('')
+const recommendations = ref<Scholarship[]>([])
+const seenRecommendationIds = ref<string[]>([])
+const recommendationLoading = ref(false)
+const remainingToday = ref<number | null>(null)
+const consultingScholarship = ref<Scholarship | null>(null)
+const recommendationStage = ref<'choose' | 'intake' | 'ready' | 'results'>('choose')
+const recommendationAnswers = ref<string[]>([])
+const intakeQuestions = [
+  'What level do you want to study, and in which field?',
+  'Which countries are you considering, or are you open to any destination?',
+  'What matters most to you: full funding, a specific university, a deadline, or another preference?',
+]
+const consultationScholarshipId = ref(selectedId.value || '')
+const consultationScholarships = computed(() => [...new Set([...applicationIds.value, ...savedIds.value, ...(selectedId.value ? [selectedId.value] : [])])]
+  .map((id) => getScholarship(id))
+  .filter((item): item is Scholarship => Boolean(item)))
 const messageArea = ref<HTMLElement | null>(null)
 const activeThread = computed(() => threads.value.find((thread) => thread.id === activeId.value) || null)
 const activeApplicationId = computed(() => selectedId.value ? backendApplicationIds.value[selectedId.value] : undefined)
@@ -249,7 +266,13 @@ const replyFrom = (payload: unknown) => {
 const send = async () => {
   const text = input.value.trim()
   if (!text || responding.value) return
-
+  if (recommendationStage.value === 'intake') {
+    recommendationAnswers.value = [...recommendationAnswers.value, text]
+    input.value = ''
+    if (recommendationAnswers.value.length >= intakeQuestions.length) recommendationStage.value = 'ready'
+    await scrollToLatest()
+    return
+  }
   const generation = accountGeneration
   const selectedApplicationId = activeApplicationId.value
   responding.value = true
@@ -303,6 +326,83 @@ const send = async () => {
   }
 }
 
+const rankedScholarshipIds = () => scholarships.value
+  .map((item) => {
+    const user = profile.value
+    const intake = recommendationAnswers.value.join(' ').toLowerCase()
+    let score = item.matchPercentage
+    if (user?.destinationCountry && item.country.toLowerCase().includes(user.destinationCountry.toLowerCase())) score += 3
+    if (user?.targetEducationLevel && item.educationLevel.toLowerCase().includes(user.targetEducationLevel.toLowerCase())) score += 2
+    if (user?.fieldOfStudy && (item.fieldOfStudy === 'All fields' || item.fieldOfStudy.toLowerCase().includes(user.fieldOfStudy.toLowerCase()))) score += 3
+    if (user?.fundingPreference && item.fundingType.toLowerCase().includes(user.fundingPreference.toLowerCase())) score += 2
+    if (intake.includes('fully') && item.fundingType.toLowerCase().includes('fully')) score += 5
+    if (intake.includes(item.country.toLowerCase())) score += 6
+    if (item.fieldOfStudy !== 'All fields' && intake.includes(item.fieldOfStudy.toLowerCase())) score += 6
+    return { id: item.id, score }
+  })
+  .sort((left, right) => right.score - left.score)
+  .map((item) => item.id)
+  .sort((left, right) => (seenRecommendationIds.value.includes(left) ? 1 : 0) - (seenRecommendationIds.value.includes(right) ? 1 : 0))
+
+const findRecommendations = async () => {
+  if (recommendationLoading.value) return
+  const generation = accountGeneration
+  recommendationLoading.value = true
+  error.value = ''
+  try {
+    const payload = await apiRequest<{ scholarshipIds: string[]; remainingToday: number; tokenBalance: number }>('/api/ai/recommendations', {
+      method: 'POST',
+      body: { rankedScholarshipIds: rankedScholarshipIds() },
+    })
+    if (!isCurrentAccount(generation)) return
+    const matches = payload.scholarshipIds.map((id) => getScholarship(id)).filter((item): item is Scholarship => Boolean(item))
+    recommendations.value = matches
+    seenRecommendationIds.value = [...new Set([...seenRecommendationIds.value, ...matches.map((item) => item.id)])]
+    setRecommendedScholarships(matches.map((item) => item.id))
+    remainingToday.value = payload.remainingToday
+    recommendationStage.value = 'results'
+    syncAiTokenBalance(payload)
+  } catch (caught) {
+    if (isCurrentAccount(generation)) {
+      syncAiTokenBalance(caught)
+      error.value = userError(caught)
+    }
+  } finally {
+    if (isCurrentAccount(generation)) recommendationLoading.value = false
+  }
+}
+
+const consultScholarship = (scholarship: Scholarship) => {
+  recommendationStage.value = 'choose'
+  consultingScholarship.value = scholarship
+  selectScholarship(scholarship.id)
+  error.value = ''
+}
+
+const useQuestionTemplate = (question: string) => {
+  const scholarship = consultingScholarship.value
+  input.value = scholarship ? `About ${scholarship.name}: ${question}` : question
+  void send()
+}
+const beginScholarshipConsultation = () => {
+  const scholarship = getScholarship(consultationScholarshipId.value)
+  if (!scholarship) return
+  newChat()
+  consultScholarship(scholarship)
+}
+
+const beginRecommendationIntake = () => {
+  recommendations.value = []
+  recommendationAnswers.value = []
+  recommendationStage.value = 'intake'
+  consultingScholarship.value = null
+  error.value = ''
+}
+
+const restartRecommendationIntake = () => {
+  if (remainingToday.value === 0) return
+  beginRecommendationIntake()
+}
 const formatDate = (value: string) => {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date)
@@ -335,13 +435,42 @@ const formatDate = (value: string) => {
         <template v-else>
           <div ref="messageArea" class="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f8f7ff] p-4">
             <div v-if="loadingThreads || loadingThread" class="grid h-full place-content-center text-[#5b45f5]"><LoaderCircle class="animate-spin" :size="27" /></div>
-            <div v-else-if="!activeThread?.messages.length" class="grid h-full place-content-center px-5 text-center"><span class="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-violet-100 text-[#5b45f5]"><Bot :size="27" /></span><h3 class="mt-4 text-lg font-bold text-[#17136b]">How can I help?</h3><p class="mt-2 text-sm leading-6 text-slate-500">Ask about scholarships, deadlines, documents, interviews, or your application plan.</p></div>
+            <div v-else-if="!activeThread?.messages.length" class="space-y-3 px-1 py-2">
+              <template v-if="recommendationStage === 'intake'">
+  <div class="rounded-2xl border border-violet-200 bg-white p-4 text-left"><p class="text-[11px] font-black uppercase tracking-[.12em] text-[#5b45f5]">Find your scholarship</p><h3 class="mt-1 text-base font-bold text-[#17136b]">Let’s narrow it down together</h3><p class="mt-1 text-xs leading-5 text-slate-500">Answer these three quick questions. Your answers help Minerva rank the catalogue before you spend a token.</p></div>
+  <div v-for="(question, index) in intakeQuestions" :key="question" class="flex" :class="index < recommendationAnswers.length ? 'justify-end' : 'justify-start'">
+    <p v-if="index < recommendationAnswers.length" class="max-w-[84%] rounded-2xl rounded-br-md bg-[#5b45f5] px-3.5 py-2.5 text-sm leading-5 text-white">{{ recommendationAnswers[index] }}</p>
+    <p v-else-if="index === recommendationAnswers.length" class="max-w-[84%] rounded-2xl rounded-bl-md border border-violet-100 bg-white px-3.5 py-2.5 text-sm leading-5 text-slate-600">{{ question }}</p>
+  </div>
+</template>
+<template v-else-if="recommendationStage === 'ready'">
+  <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left"><p class="text-[11px] font-black uppercase tracking-[.12em] text-emerald-700">Ready to recommend</p><h3 class="mt-1 text-base font-bold text-[#17136b]">I have your preferences</h3><p class="mt-1 text-xs leading-5 text-slate-600">Minerva will search its catalogue and show three matches. This uses 1 token.</p></div>
+  <button type="button" class="w-full rounded-xl bg-[#5b45f5] px-3 py-3 text-sm font-bold text-white disabled:opacity-50" :disabled="recommendationLoading" @click="findRecommendations">{{ recommendationLoading ? 'Finding matches…' : 'Show my 3 recommendations · 1 token' }}</button>
+</template>
+<template v-else-if="consultingScholarship">
+                <div class="rounded-2xl border border-violet-200 bg-white p-4 text-left"><p class="text-[11px] font-black uppercase tracking-[.12em] text-[#5b45f5]">Consulting</p><h3 class="mt-1 text-base font-bold text-[#17136b]">{{ consultingScholarship.name }}</h3><p class="mt-1 text-xs leading-5 text-slate-500">Choose a question or ask Minerva anything about this scholarship.</p></div>
+                <button v-for="question in ['Am I eligible for this scholarship?', 'Which documents should I prioritise?', 'How can I make my application stronger?']" :key="question" type="button" class="w-full rounded-xl border border-violet-100 bg-white px-3 py-3 text-left text-sm font-semibold text-[#17136b] hover:border-violet-300" @click="useQuestionTemplate(question)">{{ question }}</button>
+                <button type="button" class="w-full text-xs font-bold text-[#5b45f5]" @click="consultingScholarship = null">Choose another recommendation</button>
+              </template>
+              <template v-else-if="recommendationStage === 'results' && recommendations.length">
+                <div class="rounded-2xl border border-violet-200 bg-white p-4 text-left"><p class="text-[11px] font-black uppercase tracking-[.12em] text-[#5b45f5]">Your Minerva matches</p><h3 class="mt-1 text-base font-bold text-[#17136b]">Pick one to consult</h3><p class="mt-1 text-xs text-slate-500">These three are also highlighted in Discover.</p></div>
+                <article v-for="item in recommendations" :key="item.id" class="rounded-2xl border border-violet-100 bg-white p-3"><p class="text-xs font-bold text-[#5b45f5]">{{ item.country }} · {{ item.fundingType }}</p><h4 class="mt-1 text-sm font-bold text-[#17136b]">{{ item.name }}</h4><p class="mt-1 text-xs leading-5 text-slate-500">{{ item.eligibilitySummary }}</p><div class="mt-3 flex gap-2"><button type="button" class="rounded-lg bg-[#5b45f5] px-2.5 py-2 text-xs font-bold text-white" @click="consultScholarship(item)">Consult</button><RouterLink :to="`/scholarships/${item.id}`" class="rounded-lg border border-violet-200 px-2.5 py-2 text-xs font-bold text-[#5b45f5]">View details</RouterLink></div></article>
+                <button type="button" class="w-full rounded-xl border border-violet-200 bg-white px-3 py-3 text-sm font-bold text-[#5b45f5] disabled:opacity-50" :disabled="recommendationLoading || remainingToday === 0" @click="restartRecommendationIntake">{{ remainingToday === 0 ? 'Daily recommendation limit reached' : 'Answer new preferences for another search' }}</button>
+                <p v-if="remainingToday !== null" class="text-center text-xs text-slate-400">{{ remainingToday }} of 3 recommendation searches remaining today</p>
+              </template>
+              <template v-else>
+                <span class="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-violet-100 text-[#5b45f5]"><Bot :size="27" /></span><h3 class="text-center text-lg font-bold text-[#17136b]">How can I help?</h3><p class="text-center text-sm leading-6 text-slate-500">Choose a scholarship you already saved to consult it, or let Minerva ask about your goals before recommending new matches.</p>
+                <div v-if="consultationScholarships.length" class="rounded-xl border border-violet-100 bg-white p-3 text-left"><label class="block text-xs font-bold text-[#17136b]">Consult an existing scholarship<select v-model="consultationScholarshipId" class="mt-2 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 outline-none focus:border-violet-400"><option disabled value="">Choose a scholarship</option><option v-for="item in consultationScholarships" :key="item.id" :value="item.id">{{ item.name }}</option></select></label><button type="button" class="mt-3 w-full rounded-lg bg-[#5b45f5] px-3 py-2.5 text-sm font-bold text-white disabled:opacity-50" :disabled="!consultationScholarshipId" @click="beginScholarshipConsultation">Consult this scholarship</button></div>
+                <p v-else class="rounded-xl border border-dashed border-violet-200 bg-white px-3 py-3 text-center text-xs leading-5 text-slate-500">Save a scholarship or create an application folder first to consult it directly.</p>
+                <button type="button" class="w-full rounded-xl border border-violet-200 bg-white px-3 py-3 text-sm font-bold text-[#5b45f5]" @click="beginRecommendationIntake">Help me find the right scholarships</button>
+              </template>
+            </div>
             <template v-else>
               <div v-for="message in activeThread.messages" :key="message.id" class="flex" :class="message.role === 'user' ? 'justify-end' : 'justify-start'"><p class="max-w-[84%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-5" :class="message.role === 'user' ? 'rounded-br-md bg-[#5b45f5] text-white' : 'rounded-bl-md border border-violet-100 bg-white text-slate-600'">{{ message.text }}</p></div>
             </template>
             <div v-if="responding" class="flex justify-start"><span class="rounded-2xl rounded-bl-md border border-violet-100 bg-white px-4 py-2 text-sm tracking-[.25em] text-[#5b45f5]">•••</span></div>
           </div>
-          <form class="flex items-end gap-2 border-t border-slate-100 bg-white p-3" @submit.prevent="send"><textarea v-model="input" rows="1" class="max-h-28 min-h-11 flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-[#5b45f5] focus:ring-2 focus:ring-violet-100" placeholder="Ask Minerva AI…" :disabled="loadingThreads" @keydown.enter.exact.prevent="send" /><button type="submit" class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#5b45f5] text-white disabled:opacity-40" :disabled="!input.trim() || responding || loadingThreads" aria-label="Send message"><LoaderCircle v-if="responding" class="animate-spin" :size="18" /><Send v-else :size="18" /></button></form>
+          <form class="flex items-end gap-2 border-t border-slate-100 bg-white p-3" @submit.prevent="send"><textarea v-model="input" rows="1" class="max-h-28 min-h-11 flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-[#5b45f5] focus:ring-2 focus:ring-violet-100" :placeholder="recommendationStage === 'intake' ? 'Type your answer for Minerva…' : 'Ask Minerva AI…'" :disabled="loadingThreads" @keydown.enter.exact.prevent="send" /><button type="submit" class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#5b45f5] text-white disabled:opacity-40" :disabled="!input.trim() || responding || loadingThreads" aria-label="Send message"><LoaderCircle v-if="responding" class="animate-spin" :size="18" /><Send v-else :size="18" /></button></form>
         </template>
       </section>
     </Transition>

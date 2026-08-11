@@ -18,7 +18,7 @@ const major = ref('')
 const funding = ref('')
 const sort = ref<'match' | 'deadline' | 'name'>('match')
 const route = useRoute()
-const { applicationIds, session } = useAppState()
+const { applicationIds, session, recommendedScholarshipIds } = useAppState()
 const scholarships = ref<Scholarship[]>([])
 
 onMounted(async () => {
@@ -38,12 +38,20 @@ const fundings = computed(() => [...new Set(scholarships.value.map((item) => ite
 const firstSetup = computed(() => Boolean(route.query.recommended) || Boolean(session.value && applicationIds.value.length === 0))
 const showRecommendationHighlight = computed(() => Boolean(route.query.recommended))
 const isFiltered = computed(() => Boolean(query.value || country.value || level.value || major.value || funding.value))
+const showChatRecommendations = computed(() => Boolean(recommendedScholarshipIds.value.length && !isFiltered.value && sort.value === 'match'))
 const results = computed(() => scholarships.value.filter((item) => {
   const haystack = `${item.name} ${item.provider} ${item.country} ${item.fieldOfStudy} ${item.program}`.toLowerCase()
   const matchesQuery = haystack.includes(query.value.trim().toLowerCase())
   const matchesMajor = !major.value || item.fieldOfStudy === major.value || item.fieldOfStudy === 'All fields'
   return matchesQuery && matchesMajor && (!country.value || item.country === country.value) && (!level.value || item.educationLevel === level.value) && (!funding.value || item.fundingType === funding.value)
-}).sort((a, b) => sort.value === 'name' ? a.name.localeCompare(b.name) : sort.value === 'deadline' ? a.deadline.localeCompare(b.deadline) : b.matchPercentage - a.matchPercentage))
+}).sort((a, b) => {
+  if (showChatRecommendations.value) {
+    const aIndex = recommendedScholarshipIds.value.indexOf(a.id)
+    const bIndex = recommendedScholarshipIds.value.indexOf(b.id)
+    if (aIndex >= 0 || bIndex >= 0) return (aIndex < 0 ? 99 : aIndex) - (bIndex < 0 ? 99 : bIndex)
+  }
+  return sort.value === 'name' ? a.name.localeCompare(b.name) : sort.value === 'deadline' ? a.deadline.localeCompare(b.deadline) : b.matchPercentage - a.matchPercentage
+}))
 const clear = () => { query.value = ''; country.value = ''; level.value = ''; major.value = ''; funding.value = ''; sort.value = 'match' }
 const reload = () => window.location.reload()
 </script>
@@ -61,7 +69,7 @@ const reload = () => window.location.reload()
         </section>
 
         <section class="discover-results">
-          <div class="discover-section-heading"><div><p class="workspace-kicker">{{ !isFiltered && sort === 'match' ? 'Recommended opportunities' : 'Explore all opportunities' }}</p><h2>{{ !isFiltered && sort === 'match' ? 'Scholarships matched to you' : 'Find the right scholarship' }}</h2></div><p><strong>{{ results.length }}</strong> scholarships available</p></div>
+          <div class="discover-section-heading"><div><p class="workspace-kicker">{{ showChatRecommendations ? 'Minerva chat recommendations' : !isFiltered && sort === 'match' ? 'Recommended opportunities' : 'Explore all opportunities' }}</p><h2>{{ showChatRecommendations ? 'Your latest AI recommendations' : !isFiltered && sort === 'match' ? 'Scholarships matched to you' : 'Find the right scholarship' }}</h2></div><p><strong>{{ results.length }}</strong> scholarships available</p></div>
 
           <div class="discover-filter-panel">
             <div class="discover-filter-grid">
@@ -72,14 +80,14 @@ const reload = () => window.location.reload()
               <label><span>Funding</span><select v-model="funding"><option value="">All funding</option><option v-for="item in fundings" :key="item">{{ item }}</option></select></label>
             </div>
             <div class="discover-filter-footer">
-              <div class="active-filter-list"><SlidersHorizontal :size="16" /><span v-if="!isFiltered">Use filters to narrow your recommendations</span><button v-if="country" @click="country = ''">{{ country }} <X :size="12" /></button><button v-if="level" @click="level = ''">{{ level }} <X :size="12" /></button><button v-if="major" @click="major = ''"><GraduationCap :size="12" />{{ major }} <X :size="12" /></button><button v-if="funding" @click="funding = ''">{{ funding }} <X :size="12" /></button><button v-if="query" @click="query = ''">“{{ query }}” <X :size="12" /></button></div>
+              <div class="active-filter-list"><SlidersHorizontal :size="16" /><span v-if="!isFiltered">Use filters to narrow your recommendations</span><button v-if="country" @click="country = ''">{{ country }} <X :size="12" /></button><button v-if="level" @click="level = ''">{{ level }} <X :size="12" /></button><button v-if="major" @click="major = ''"><GraduationCap :size="12" />{{ major }} <X :size="12" /></button><button v-if="funding" @click="funding = ''">{{ funding }} <X :size="12" /></button><button v-if="query" @click="query = ''">&ldquo;{{ query }}&rdquo; <X :size="12" /></button></div>
               <div class="discover-sort"><button v-if="isFiltered" @click="clear">Clear all</button><label>Sort by<select v-model="sort"><option value="match">Best match</option><option value="deadline">Deadline</option><option value="name">Name</option></select></label></div>
             </div>
           </div>
 
           <div v-if="loading" class="scholarship-results-grid"><div v-for="n in 6" :key="n" class="h-[335px] animate-pulse rounded-3xl bg-slate-100" /></div>
           <div v-else-if="error" class="discover-empty"><Search :size="34" /><h2>Could not load scholarships</h2><p>{{ error }}</p><button class="btn-primary" @click="reload">Retry</button></div>
-          <div v-else-if="results.length" class="scholarship-results-grid"><ScholarshipCard v-for="(item, index) in results" :key="item.id" :scholarship="item" :recommended="showRecommendationHighlight && index < 3" selectable /></div>
+          <div v-else-if="results.length" class="scholarship-results-grid"><ScholarshipCard v-for="(item, index) in results" :key="item.id" :scholarship="item" :recommended="(showRecommendationHighlight && index < 3) || recommendedScholarshipIds.includes(item.id)" selectable /></div>
           <div v-else class="discover-empty"><Search :size="34" /><h2>No scholarships match those filters</h2><p>Try clearing a filter or selecting a broader major.</p><button class="btn-primary" @click="clear">Clear all filters</button></div>
         </section>
       </div>

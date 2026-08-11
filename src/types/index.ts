@@ -67,6 +67,7 @@ export interface DocumentReview {
   reviewedAt: string
   sourceFingerprint?: string
 }
+export interface DocumentPage { id: string; title: string; content: string }
 export interface ScholarshipDocument {
   id: string
   kind: DocumentKind
@@ -75,6 +76,7 @@ export interface ScholarshipDocument {
   category: string
   prompt: string
   content: string
+  pages: DocumentPage[]
   uploadName: string
   status: DocumentStatus
   updatedAt: string
