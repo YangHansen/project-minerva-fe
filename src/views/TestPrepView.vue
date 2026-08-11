@@ -358,7 +358,7 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 
 <BaseModal :open="showIeltsInfo" title="What is IELTS?" @close="showIeltsInfo = false">
   <div class="space-y-5 text-sm text-slate-600">
-    <p>IELTS (International English Language Testing System) measures English proficiency for study, work, or migration. It includes Listening, Reading, Writing, and Speaking sections.</p>
+    <p>IELTS (International English Language Testing System) measures English proficiency for study, work, or migration. It includes Listening, Reading, Writing, and Speaking sections. This platform provides exercise for IELTS academic purpose only.</p>
     <div class="rounded-2xl bg-slate-50 p-4 text-slate-700">
       <h3 class="text-sm font-bold text-slate-900">General exam format</h3>
       <ul class="mt-3 space-y-2 list-disc pl-5 text-slate-600">
