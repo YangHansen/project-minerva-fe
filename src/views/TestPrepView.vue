@@ -30,7 +30,12 @@ const mode = ref<Mode>('simulation')
 const fullTest = ref(false)
 const simulationSet = ref(1)
 const completedSimulationSets = ref<number[]>(JSON.parse(localStorage.getItem('minerva-ielts-simulation-sets') || '[]'))
-const selectedParts = ref([1, 2, 3, 4])
+const selectedParts = ref({
+  listening: [1, 2, 3, 4],
+  reading: [1, 2, 3],
+  writing: [1, 2],
+  speaking: [1, 2, 3],
+})
 const timeLimit = ref(32)
 const remaining = ref(32 * 60)
 const playing = ref(false)
@@ -73,6 +78,20 @@ const skills = [
   { name: 'Writing' as Skill, icon: FilePenLine, detail: '2 writing tasks', time: '60 min' },
   { name: 'Speaking' as Skill, icon: Mic, detail: '3 interview parts', time: '11–14 min' },
 ]
+const partsForSkill = (skill: Skill) => {
+  const counts: Record<Skill, number> = { Listening: 4, Reading: 3, Writing: 2, Speaking: 3 }
+  return Array.from({ length: counts[skill] }, (_, i) => i + 1)
+}
+const getSelectedParts = (skill: Skill) => {
+  return selectedParts.value[skill.toLowerCase() as keyof typeof selectedParts.value]
+}
+const toggleSelectedPart = (part: number) => {
+  const key = currentSkill.value.toLowerCase() as keyof typeof selectedParts.value
+  const current = selectedParts.value[key]
+  selectedParts.value[key] = current.includes(part)
+    ? current.filter((value) => value !== part)
+    : [...current, part].sort((a, b) => a - b)
+}
 const listeningExercise = computed(() => exercises.value.find((item) => item.section === 'listening'))
 const readingExercise = computed(() => exercises.value.find((item) => item.section === 'reading'))
 const writingExercises = computed(() => exercises.value.filter((item) => item.section === 'writing').sort((a, b) => a.order - b.order))
@@ -466,8 +485,9 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <div v-if="mode === 'practice'" class="mt-5">
 <h3 class="text-xl font-extrabold text-[#17136b]">Choose the parts to practise</h3>
 <div class="mt-5 grid gap-3 sm:grid-cols-2">
-<label v-for="part in 4" :key="part" class="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-bold text-[#17136b]">
-<input v-model="selectedParts" type="checkbox" :value="part" class="accent-[#5b45f5]" />Part {{ part }} <span class="font-normal text-slate-400">(10 questions)</span>
+<label v-for="part in partsForSkill(currentSkill)" :key="part" class="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-bold text-[#17136b]">
+<input type="checkbox" :checked="getSelectedParts(currentSkill).includes(part)" @change="toggleSelectedPart(part)" class="accent-[#5b45f5]" />Part {{ part }}
+<span v-if="currentSkill === 'Listening' || currentSkill === 'Reading'" class="font-normal text-slate-400">(5 questions)</span>
 </label>
 </div>
 <p class="mt-5 rounded-xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">No timer is used in Practice mode. Submit whenever you are ready.</p>
