@@ -2,7 +2,6 @@ import { computed, ref, watch } from 'vue'
 import type { ChecklistItem, ChecklistStatus, DocumentKind, DocumentVersion, Mentor, MentorBooking, MockSession, PracticeResult, Scholarship, ScholarshipDocument, UserProfile } from '../types'
 import { apiRequest } from '../api'
 import { scholarships as staticScholarships } from '../data/scholarships'
-import { mentors as staticMentors } from '../data/mentors'
 
 function read<T>(key: string, fallback: T): T {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback } catch { return fallback }
@@ -154,9 +153,9 @@ const scholarships = computed(() => {
   return [...scholarshipCatalog.value, ...staticScholarships.filter((item) => !byId.has(item.id))]
 })
 const getScholarship = (id: string) => scholarships.value.find((item) => item.id === id)
-const defaultMentorCatalog = staticMentors as Mentor[]
-const mentors = ref<Mentor[]>(defaultMentorCatalog)
+const mentors = ref<Mentor[]>([])
 const mentorCatalogError = ref('')
+const remoteMentorsLoaded = ref(false)
 let mentorPromise: Promise<void> | null = null
 function normalizeMentor(raw: unknown): Mentor {
   const mentor = asRecord(raw)
@@ -183,16 +182,14 @@ function normalizeMentor(raw: unknown): Mentor {
 }
 function loadMentors(force = false): Promise<void> {
   if (mentorPromise) return mentorPromise
-  if (!force && mentors.value.length >= defaultMentorCatalog.length) return Promise.resolve()
+  if (!force && remoteMentorsLoaded.value) return Promise.resolve()
   mentorCatalogError.value = ''
   mentorPromise = (async () => {
     try {
       const result = await apiRequest<{ mentors: unknown[] }>('/api/mentors')
       const remote = (result.mentors || []).map(normalizeMentor)
-      const merged = [...remote]
-      const seen = new Set(remote.map((item) => item.id))
-      for (const item of defaultMentorCatalog) if (!seen.has(item.id)) merged.push(item)
-      mentors.value = merged.length ? merged : defaultMentorCatalog
+      mentors.value = remote
+      remoteMentorsLoaded.value = true
     } catch (error) {
       mentorCatalogError.value = error instanceof Error ? error.message : 'Could not load mentors.'
     } finally {
@@ -617,7 +614,8 @@ export function useAppState() {
     catalogError.value = ''
     catalogLoading.value = false
     catalogPromise = null
-    mentors.value = defaultMentorCatalog
+    mentors.value = []
+    remoteMentorsLoaded.value = false
     mentorCatalogError.value = ''
     mentorPromise = null
     booking.value = null
