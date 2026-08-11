@@ -651,15 +651,15 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <Volume2 :size="18" class="text-[#5b45f5]" />
 </div>
 <div class="mx-auto w-full max-w-6xl flex-1 p-6 sm:p-9">
-<p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Part 1 · Questions 1–{{ listeningLabels.length }}</p>
+<p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Part {{ listeningPart }} · Questions 1–{{ listeningLabels.length }}</p>
 <h1 class="mt-3 text-2xl font-extrabold">{{ currentListeningExercise?.title }}</h1>
-<p class="mt-5 text-sm italic text-slate-500">Complete the form. Write NO MORE THAN THREE WORDS AND/OR A NUMBER for each answer.</p>
+<p class="mt-5 text-sm italic text-slate-500">{{ currentListeningExercise?.instruction }}</p>
 <div class="mt-7 overflow-hidden rounded-2xl border border-slate-200">
 <div v-for="(label,index) in listeningLabels" :key="label" class="grid border-b border-slate-200 last:border-0 sm:grid-cols-[1fr_1.4fr]">
 <span class="bg-[#fafafe] p-4 text-sm font-bold">{{ label }}</span>
 <label class="flex items-center gap-3 p-3">
 <span class="grid size-8 shrink-0 place-items-center rounded-full bg-[#5b45f5] text-xs font-extrabold text-white">{{ index + 1 }}</span>
-<input v-model="listeningAnswers[index]" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-[#5b45f5]" />
+<input v-model="listeningAnswers[listeningPart][index]" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-[#5b45f5]" />
 </label>
 </div>
 </div>
