@@ -41,10 +41,16 @@ const remaining = ref(32 * 60)
 const playing = ref(false)
 const audioProgress = ref(0)
 const reviewed = ref<number[]>([])
-const listeningAnswers = ref(['', '', '', '', ''])
-const readingAnswers = ref(['', '', '', '', '', '', '', ''])
+const listeningAnswers = ref<Record<number, string[]>>({
+  1: [], 2: [], 3: [], 4: []
+})
+const readingAnswers = ref<Record<number, string[]>>({
+  1: [], 2: [], 3: []
+})
 const writingTask = ref<1 | 2>(1)
 const writingAnswers = ref<Record<1 | 2, string>>({ 1: '', 2: '' })
+const listeningPart = ref(1)
+const readingPart = ref(1)
 const speakingPart = ref(1)
 const micStatus = ref<'idle' | 'testing' | 'ready' | 'blocked'>('idle')
 const recording = ref(false)
@@ -131,10 +137,12 @@ const resetAttempt = () => {
   recordingChunks = []
   stopRecordingPromise = null
   resolveRecordingStop = null
-  listeningAnswers.value = ['', '', '', '', '']
-  readingAnswers.value = ['', '', '', '', '', '', '', '']
+  listeningAnswers.value = { 1: [], 2: [], 3: [], 4: [] }
+  readingAnswers.value = { 1: [], 2: [], 3: [] }
   writingAnswers.value = { 1: '', 2: '' }
   writingTask.value = 1
+  listeningPart.value = 1
+  readingPart.value = 1
   speakingPart.value = 1
   speakingRecordings.clear()
   speakingDurations.clear()
