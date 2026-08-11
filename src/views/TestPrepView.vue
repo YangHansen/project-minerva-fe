@@ -114,11 +114,13 @@ const listeningExercises = computed(() =>
   exercises.value
     .filter(item => item.section === 'listening')
     .sort((a, b) => a.order - b.order)
+    .map((exercise, i) => ({ ...exercise, part: i + 1 }))
 )
 const readingExercises = computed(() =>
   exercises.value
     .filter(item => item.section === 'reading')
     .sort((a, b) => a.order - b.order)
+    .map((exercise, i) => ({ ...exercise, part: i + 1 }))
 )
 const currentListeningExercise = computed(() =>
   listeningExercises.value[listeningPart.value - 1]
@@ -227,6 +229,13 @@ const startTimer = () => {
 }
 const openInstructions = () => { stage.value = 'instructions' }
 const beginTest = () => {
+  if (mode.value === 'practice') {
+    const first = getSelectedParts(currentSkill.value)[0] || 1
+    if (currentSkill.value === 'Listening') listeningPart.value = first
+    if (currentSkill.value === 'Reading') readingPart.value = first
+    if (currentSkill.value === 'Writing') writingTask.value = first as 1 | 2
+    if (currentSkill.value === 'Speaking') speakingPart.value = 1
+  }
   if (currentSkill.value === 'Speaking' && !fullTest.value) stage.value = 'microphone'
   else { stage.value = 'exam'; if (mode.value === 'simulation') startTimer() }
 }
@@ -347,14 +356,17 @@ const submitTest = async (allowIncomplete = false) => {
   estimatedBand.value = null
   serverPercent.value = null
   try {
-    const autoScored = exercises.value
-      .filter(item => (fullTest.value || currentSkill.value === 'Listening' || currentSkill.value === 'Reading') && (item.section === 'listening' || item.section === 'reading'))
-      .map(item => ({
-        exerciseId: item.id,
-        answers: item.section === 'listening'
-          ? listeningAnswers.value[item.order] || []
-          : readingAnswers.value[item.order] || []
-      }))
+    const submittedExercises = fullTest.value
+      ? [...listeningExercises.value, ...readingExercises.value]
+      : currentSkill.value === 'Listening' ? listeningExercises.value
+      : currentSkill.value === 'Reading' ? readingExercises.value
+      : []
+    const autoScored = submittedExercises.map(exercise => ({
+      exerciseId: exercise.id,
+      answers: exercise.section === 'listening'
+        ? listeningAnswers.value[exercise.part] || []
+        : readingAnswers.value[exercise.part] || []
+    }))
     if (autoScored.length) {
       const submissions = await submitIeltsSet(simulationSet.value, autoScored)
       const total = submissions.reduce((sum, item) => sum + item.totalQuestions, 0)
@@ -567,8 +579,9 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <Clock3 v-else :size="25" />
 </span>
 <div v-if="mode === 'practice'" class="mt-5">
-<h3 class="text-xl font-extrabold text-[#17136b]">Choose the parts to practise</h3>
-<div class="mt-5 grid gap-3 sm:grid-cols-2">
+<h3 class="text-xl font-extrabold text-[#17136b]">{{ currentSkill === 'Speaking' ? 'Speaking practice' : 'Choose the parts to practise' }}</h3>
+<div v-if="currentSkill === 'Speaking'" class="mt-5 rounded-xl bg-violet-50 p-4 text-sm font-bold text-[#5b45f5]">All 3 interview parts are included in every speaking session.</div>
+<div v-else class="mt-5 grid gap-3 sm:grid-cols-2">
 <label v-for="part in partsForSkill(currentSkill)" :key="part" class="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-bold text-[#17136b]">
 <input type="checkbox" :checked="getSelectedParts(currentSkill).includes(part)" @change="toggleSelectedPart(part)" class="accent-[#5b45f5]" />Part {{ part }}
 <span v-if="currentSkill === 'Listening' || currentSkill === 'Reading'" class="font-normal text-slate-400">(5 questions)</span>
@@ -672,11 +685,11 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
     v-for="exercise in listeningExercises"
     :key="exercise.order"
     class="rounded-xl px-4 py-2 text-sm font-extrabold transition-colors"
-    :class="listeningPart === exercise.order ? 'bg-[#17136b] text-white' : 'text-slate-500 hover:bg-slate-100'"
-    :disabled="mode === 'practice' && !selectedParts.listening.includes(exercise.order)"
-    @click="listeningPart = exercise.order"
+    :class="listeningPart === exercise.part ? 'bg-[#17136b] text-white' : 'text-slate-500 hover:bg-slate-100'"
+    :disabled="mode === 'practice' && !selectedParts.listening.includes(exercise.part)"
+    @click="listeningPart = exercise.part"
   >
-    Part {{ exercise.order }}
+    Part {{ exercise.part }}
   </button>
 </div>
 <div v-if="listeningAudioUrl" class="border-b border-slate-200 bg-[#fafafe] px-6 py-4">
@@ -709,19 +722,20 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 </div>
 </section>
 
-    <section v-else-if="currentSkill === 'Reading'" class="grid min-h-0 flex-1 lg:grid-cols-2">
+    <section v-else-if="currentSkill === 'Reading'" class="flex min-h-0 flex-1 flex-col">
 <div class="flex gap-2 border-b border-slate-200 bg-[#fafafe] px-6 py-3">
   <button
     v-for="exercise in readingExercises"
     :key="exercise.order"
     class="rounded-xl px-4 py-2 text-sm font-extrabold transition-colors"
-    :class="readingPart === exercise.order ? 'bg-[#17136b] text-white' : 'text-slate-500 hover:bg-slate-100'"
-    :disabled="mode === 'practice' && !selectedParts.reading.includes(exercise.order)"
-    @click="readingPart = exercise.order"
+    :class="readingPart === exercise.part ? 'bg-[#17136b] text-white' : 'text-slate-500 hover:bg-slate-100'"
+    :disabled="mode === 'practice' && !selectedParts.reading.includes(exercise.part)"
+    @click="readingPart = exercise.part"
   >
-    Part {{ exercise.order }}
+    Part {{ exercise.part }}
   </button>
 </div>
+<div class="grid min-h-0 flex-1 lg:grid-cols-2">
 <article class="max-h-[calc(100vh-150px)] overflow-auto border-r border-slate-200 bg-[#f8f8ff] p-6 sm:p-9">
 <p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Part {{ readingPart }} · Reading passage {{ readingPart }}</p>
 <h1 class="mt-3 text-3xl font-extrabold">{{ currentReadingExercise?.title }}</h1>
@@ -746,6 +760,7 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 </label>
 </div>
 </article>
+</div>
 </section>
 
     <section v-else-if="currentSkill === 'Writing'" class="grid min-h-0 flex-1 lg:grid-cols-2">
