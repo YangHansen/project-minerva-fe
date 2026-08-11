@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Edit3, FilePlus2, FileText, Folder, MoreVertical, Search, X } from 'lucide-vue-next'
+import { Edit3, FilePlus2, FileText, Folder, Search, Trash2, X } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import type { DocumentKind, ScholarshipDocument } from '../types'
 import { getScholarship } from '../data/scholarships'
@@ -10,7 +10,7 @@ import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseSelect from '../components/common/BaseSelect.vue'
 
 const router = useRouter()
-const { selectedId, applicationIds, documents, addDocument, selectScholarship } = useAppState()
+const { selectedId, applicationIds, documents, addDocument, deleteDocument, selectScholarship, toast } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
 const availableScholarships = computed(() => applicationIds.value.map((id) => getScholarship(id)).filter((item): item is NonNullable<typeof item> => Boolean(item)))
 const query = ref('')
@@ -20,6 +20,7 @@ const isCreateOpen = ref(false)
 const newDocumentTitle = ref('')
 const newDocumentKind = ref<DocumentKind>('essay')
 const creatingDocument = ref(false)
+const deletingDocumentId = ref<string | null>(null)
 const createError = ref('')
 
 const documentTypes: { kind: DocumentKind; label: string; description: string }[] = [
@@ -68,6 +69,18 @@ const editedLabel = (date: string) => {
 }
 
 const openEditor = (doc: ScholarshipDocument) => router.push(`/documents/${doc.id}`)
+const removeDocument = async (doc: ScholarshipDocument) => {
+  if (deletingDocumentId.value || !window.confirm(`Delete "${doc.title}"? This permanently removes its saved versions and AI reviews.`)) return
+  deletingDocumentId.value = doc.id
+  try {
+    await deleteDocument(doc)
+    toast('Document deleted.', 'info')
+  } catch (caught) {
+    toast(caught instanceof Error ? caught.message : 'Unable to delete the document.', 'info')
+  } finally {
+    deletingDocumentId.value = null
+  }
+}
 const openCreateDocument = () => {
   newDocumentTitle.value = ''
   newDocumentKind.value = 'essay'
@@ -143,8 +156,8 @@ const createDocument = async () => {
 <div class="library-card-actions">
 <button @click="openEditor(doc)">
 <Edit3 :size="15" />Edit</button>
-<button aria-label="Document options">
-<MoreVertical :size="17" />
+<button :disabled="deletingDocumentId === doc.id" :aria-label="`Delete ${doc.title}`" class="text-rose-600" @click="removeDocument(doc)">
+<Trash2 :size="16" />{{ deletingDocumentId === doc.id ? 'Deleting…' : 'Delete' }}
 </button>
 </div>
 </div>

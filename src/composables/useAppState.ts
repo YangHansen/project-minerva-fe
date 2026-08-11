@@ -384,6 +384,17 @@ export function useAppState() {
       body: { title: document.title, content: document.content, status: document.status, prompt: document.prompt },
     })
   }
+  const deleteDocument = async (document: ScholarshipDocument) => {
+    const generation = workspaceGeneration
+    if (!document.id.startsWith('document-')) {
+      await apiRequest(`/api/documents/${encodeURIComponent(document.id)}`, { method: 'DELETE' })
+    }
+    assertWorkspaceGeneration(generation)
+    for (const scholarshipId of Object.keys(documentsByScholarship.value)) {
+      documentsByScholarship.value[scholarshipId] = ensureDocuments(scholarshipId)
+        .filter((item) => item.id !== document.id)
+    }
+  }
   const createDocumentVersion = async (
     document: ScholarshipDocument,
     label?: string,
@@ -516,7 +527,7 @@ export function useAppState() {
     savedIds, applicationIds, selectedId, checklist, checklistsByScholarship, scholarshipNotes, documents, documentsByScholarship,
     backendApplicationIds, workspaceHydrating, workspaceError, hydrateWorkspace,
     profile, session, booking, tokenBalance, practiceResult, progress, documentProgress, toasts, toast, syncAiTokenBalance, resetUserState, toggleSaved, startApplication, removeApplication, selectScholarship,
-    getChecklist, getProgress, getDocuments, getDocument, addChecklistItem, updateChecklistItem, deleteChecklistItem, addDocument, saveDocument, createDocumentVersion, restoreDocumentVersion, saveScholarshipNotes, addTokens,
+    getChecklist, getProgress, getDocuments, getDocument, addChecklistItem, updateChecklistItem, deleteChecklistItem, addDocument, saveDocument, deleteDocument, createDocumentVersion, restoreDocumentVersion, saveScholarshipNotes, addTokens,
   }
 }
 

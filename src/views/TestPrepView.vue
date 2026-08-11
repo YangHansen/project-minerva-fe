@@ -9,6 +9,7 @@ import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseModal from '../components/common/BaseModal.vue'
 import { useAppState } from '../composables/useAppState'
+import { apiRequest } from '../api'
 import { getScholarship } from '../data/scholarships'
 import {
   evaluateIeltsSpeaking, evaluateIeltsWriting, getIeltsEvaluations, getIeltsSet,
@@ -21,6 +22,14 @@ import type {
 type Skill = 'Listening' | 'Reading' | 'Writing' | 'Speaking'
 type Stage = 'catalog' | 'mode' | 'instructions' | 'microphone' | 'exam' | 'results'
 type Mode = 'practice' | 'simulation'
+interface TranscriptionHistoryItem {
+  id: string
+  kind: 'speaking'
+  prompt: string
+  transcript?: string
+  durationSeconds?: number
+  createdAt: string
+}
 
 const { practiceResult, toast, selectedId, syncAiTokenBalance } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
@@ -57,6 +66,9 @@ const estimatedBand = ref<number | null>(null)
 const serverPercent = ref<number | null>(null)
 const aiEvaluations = ref<IeltsAiEvaluation[]>([])
 const speakingTranscripts = ref<Record<number, string>>({})
+const transcriptionHistory = ref<TranscriptionHistoryItem[]>([])
+const transcriptionHistoryLoading = ref(false)
+const transcriptionHistoryError = ref('')
 const speakingRecordings = new Map<number, Blob>()
 const speakingDurations = new Map<number, number>()
 const exercises = ref<IeltsExercise[]>([])
@@ -116,6 +128,20 @@ const answeredCount = computed(() => {
 const totalQuestions = computed(() => currentSkill.value === 'Listening' ? listeningExercise.value?.questions.length || 5 : currentSkill.value === 'Reading' ? readingExercise.value?.questions.length || 8 : currentSkill.value === 'Writing' ? 2 : 3)
 const combinedStrengths = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.strengths || []))].slice(0, 5))
 const combinedImprovements = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.improvements || []))].slice(0, 5))
+
+const formatHistoryDate = (value: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+const loadTranscriptionHistory = async () => {
+  transcriptionHistoryLoading.value = true
+  transcriptionHistoryError.value = ''
+  try {
+    const result = await apiRequest<{ evaluations?: TranscriptionHistoryItem[] }>('/api/ielts/evaluations?kind=speaking')
+    transcriptionHistory.value = (result.evaluations || []).filter((item): item is TranscriptionHistoryItem => item.kind === 'speaking' && Boolean(item.transcript))
+  } catch (error) {
+    transcriptionHistoryError.value = error instanceof Error ? error.message : 'Could not load transcription history.'
+  } finally {
+    transcriptionHistoryLoading.value = false
+  }
+}
 
 watch(completedSimulationSets, (sets) => localStorage.setItem('minerva-ielts-simulation-sets', JSON.stringify(sets)), { deep: true })
 watch(speakingPart, (part) => { recordingSaved.value = speakingRecordings.has(part) })
@@ -251,6 +277,7 @@ const evaluateSpeaking = async () => {
     const result = await evaluateIeltsSpeaking(form)
     syncAiTokenBalance(result)
     speakingTranscripts.value = { ...speakingTranscripts.value, [part]: result.transcript.text }
+    void loadTranscriptionHistory()
     return result.evaluation
   }))
 }
@@ -327,13 +354,9 @@ const submitTest = async (allowIncomplete = false) => {
 const loadSet = async () => {
   loadingSet.value = true
   setError.value = ''
-  try {
-    exercises.value = await getIeltsSet(1)
-  } catch (error) {
-    setError.value = error instanceof Error ? error.message : 'Could not load the IELTS test set.'
-  } finally {
-    loadingSet.value = false
-  }
+  try { exercises.value = await getIeltsSet(1) }
+  catch (error) { setError.value = error instanceof Error ? error.message : 'Could not load the IELTS test set.' }
+  finally { loadingSet.value = false }
 }
 const loadHistory = async () => {
   try {
@@ -342,7 +365,7 @@ const loadHistory = async () => {
     aiHistory.value = evaluations
   } catch { /* history is best-effort; the exam still works without it */ }
 }
-onMounted(() => { void loadSet(); void loadHistory() })
+onMounted(() => { void loadSet(); void loadHistory(); void loadTranscriptionHistory() })
 onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micStream?.getTracks().forEach((track) => track.stop()) })
 </script>
 
@@ -394,6 +417,26 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
   </div>
 </BaseModal>
 
+          <section class="mt-5 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+<div class="flex flex-wrap items-center justify-between gap-3">
+<div>
+<p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Whisper records</p>
+<h2 class="mt-2 text-2xl font-extrabold text-[#17136b]">Speaking transcription history</h2>
+<p class="mt-2 text-sm text-slate-500">Your saved IELTS speaking transcripts are private to your account.</p>
+</div>
+<button class="btn-secondary text-sm" :disabled="transcriptionHistoryLoading" @click="loadTranscriptionHistory"><Clock3 :size="15" />Refresh</button>
+</div>
+<p v-if="transcriptionHistoryError" class="mt-4 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{{ transcriptionHistoryError }}</p>
+<p v-else-if="transcriptionHistoryLoading && !transcriptionHistory.length" class="mt-4 text-sm text-slate-500">Loading saved transcripts…</p>
+<p v-else-if="!transcriptionHistory.length" class="mt-4 text-sm text-slate-500">Record and submit a speaking response to build your transcript history.</p>
+<div v-else class="mt-5 grid gap-3 lg:grid-cols-2">
+<details v-for="item in transcriptionHistory" :key="item.id" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+<summary class="cursor-pointer text-sm font-extrabold text-[#17136b]">{{ formatHistoryDate(item.createdAt) }}<span v-if="item.durationSeconds" class="ml-2 text-xs text-slate-400">· {{ item.durationSeconds }}s</span></summary>
+<p class="mt-3 text-xs font-bold text-slate-500">{{ item.prompt }}</p>
+<p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ item.transcript }}</p>
+</details>
+</div>
+</section>
           <section class="mt-5 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
 <div class="flex flex-wrap items-center justify-between gap-4">
 <div>
