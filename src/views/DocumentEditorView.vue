@@ -9,6 +9,7 @@ import { decideHighlightAction, preferEditorSelection } from '../lib/documentHig
 import { exportAsDocx, exportAsPdf } from '../lib/documentExport'
 import { useAppState } from '../composables/useAppState'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
+import BaseModal from '../components/common/BaseModal.vue'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -76,6 +77,7 @@ const filteredDocumentTemplates = computed(() => {
   const query = templateSearch.value.trim().toLowerCase()
   return query ? documentTemplates.filter((template) => `${template.name} ${template.description}`.toLowerCase().includes(query)) : documentTemplates
 })
+const pendingTemplate = ref<typeof documentTemplates[number] | null>(null)
 const paperZoomPercent = computed(() => Math.round(paperZoom.value * 100))
 const onPaperWheel = (event: WheelEvent) => {
   if (!event.ctrlKey && !event.metaKey) return
@@ -110,15 +112,31 @@ const addPage = async () => {
   await loadActivePage()
   syncEditor()
 }
-const applyTemplate = async (template: typeof documentTemplates[number]) => {
+const doApplyTemplate = async (template: typeof documentTemplates[number]) => {
   const page = activePage.value
   if (!page) return
-  const currentText = pagePreview(page.content)
-  if (currentText !== 'Blank page' && !window.confirm(`Replace the content of ${page.title} with the ${template.name} template?`)) return
   page.content = template.content
   await loadActivePage()
   syncEditor()
   toast(`${template.name} applied to ${page.title}.`)
+}
+const applyTemplate = async (template: typeof documentTemplates[number]) => {
+  const page = activePage.value
+  if (!page) return
+  const currentText = pagePreview(page.content)
+  if (currentText === 'Blank page') {
+    await doApplyTemplate(template)
+    return
+  }
+  pendingTemplate.value = template
+}
+const confirmApplyTemplate = async () => {
+  if (!pendingTemplate.value) return
+  await doApplyTemplate(pendingTemplate.value)
+  pendingTemplate.value = null
+}
+const cancelApplyTemplate = () => {
+  pendingTemplate.value = null
 }
 const autosaveState = ref('All changes saved')
 const selectedVersion = ref('current')
@@ -793,6 +811,13 @@ onBeforeUnmount(() => {
         <aside class="review-assistant editor-left-panel">
           <div class="editor-panel-tabs"><button type="button" :class="editorPanel === 'template' ? '!bg-[#5b45f5] !text-white shadow-sm' : '!text-slate-600 hover:!bg-[#5b45f5] hover:!text-white'" @click="editorPanel = 'template'">Template</button><button type="button" :class="editorPanel === 'ai' ? '!bg-[#5b45f5] !text-white shadow-sm' : '!text-slate-600 hover:!bg-[#5b45f5] hover:!text-white'" @click="editorPanel = 'ai'">AI consultation</button></div>
           <section v-if="editorPanel === 'template'" class="template-panel"><div class="template-heading"><span class="workspace-kicker">Writing starter</span><h2>Choose a template</h2><p>Preview a structure, then apply it to the selected page.</p></div><label class="template-search"><span>Search templates</span><input v-model="templateSearch" type="search" placeholder="Essay, study plan, CV..." /></label><div class="template-grid"><button v-for="template in filteredDocumentTemplates" :key="template.id" type="button" class="template-card" @click="applyTemplate(template)"><span :class="['template-preview', `tone-${template.tone}`]"><em>{{ template.previewTitle }}</em><i class="wide" /><i /><i /><i class="short" /></span><span class="template-card-copy"><strong>{{ template.name }}</strong><small>{{ template.description }}</small></span></button><p v-if="!filteredDocumentTemplates.length" class="template-empty">No matching templates.</p></div><button type="button" class="btn-secondary template-add-page" @click="addPage">+ Add blank page</button></section>
+          <BaseModal :open="Boolean(pendingTemplate)" title="Replace page content?" @close="cancelApplyTemplate">
+            <p class="mb-6 text-sm leading-6 text-slate-600">Replace the content of <strong>{{ activePage?.title }}</strong> with the <strong>{{ pendingTemplate?.name }}</strong> template? This will overwrite the current page content.</p>
+            <div class="flex items-center justify-end gap-3">
+              <button type="button" class="btn-secondary" @click="cancelApplyTemplate">Cancel</button>
+              <button type="button" class="btn-primary" @click="confirmApplyTemplate">Replace content</button>
+            </div>
+          </BaseModal>
           <div v-show="editorPanel === 'ai'" class="ai-consultation-panel">
           <div class="review-title"><span><Sparkles :size="18" />AI consultation</span><button type="button" class="btn-primary !px-3 !py-2 text-xs" :disabled="reviewLoading" @click="runReview()"><LoaderCircle v-if="reviewLoading" class="animate-spin" :size="15" /><Sparkles v-else :size="15" />{{ reviewLoading ? 'Reviewing...' : 'Review draft' }}</button></div>
           <div class='ai-review-scroll'>
