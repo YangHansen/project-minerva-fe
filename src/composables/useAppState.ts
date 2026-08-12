@@ -375,7 +375,7 @@ function hydrateWorkspace(): Promise<void> {
       backendApplicationStatuses.value = statuses
       scholarshipNotes.value = notes
       applicationIds.value = preparing
-      savedIds.value = Object.keys(mappings)
+      savedIds.value = Object.keys(mappings).filter((slug) => statuses[slug] === 'saved')
       checklistsByScholarship.value = Object.fromEntries(hydrated.map((item) => [item.slug, item.checklist]))
       documentsByScholarship.value = Object.fromEntries(hydrated.map((item) => [item.slug, item.documents]))
       if (!selectedId.value || !preparing.includes(selectedId.value)) selectedId.value = preparing[0] || null
@@ -642,10 +642,6 @@ export function useAppState() {
     documentsByScholarship.value = {}
     profile.value = null
     session.value = null
-    scholarshipCatalog.value = []
-    catalogError.value = ''
-    catalogLoading.value = false
-    catalogPromise = null
     mentors.value = []
     remoteMentorsLoaded.value = false
     mentorCatalogError.value = ''
