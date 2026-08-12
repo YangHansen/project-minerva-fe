@@ -9,6 +9,11 @@ const router = useRouter()
 const formatDate = (value: string) => new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
 const viewDetails = () => router.push(`/scholarships/${props.scholarship.databaseId || props.scholarship.id}`)
 const fieldLabel = (value: string | string[]) => Array.isArray(value) ? 'Various' : value
+const matchPercentage = (value: number | number[]) => {
+  const scores = (Array.isArray(value) ? value : [value]).map(Number).filter(Number.isFinite)
+  if (!scores.length) return 0
+  return Math.max(0, Math.min(99, Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)))
+}
 </script>
 <template>
   <article class="group relative flex min-h-[335px] flex-col rounded-3xl border border-[#e7e7ef] bg-white p-6 shadow-[0_12px_40px_rgba(23,19,107,.05)]" :class="recommended && 'border-violet-300 shadow-[0_14px_42px_rgba(91,69,245,.13)]'">
@@ -18,6 +23,6 @@ const fieldLabel = (value: string | string[]) => Array.isArray(value) ? 'Various
     <div class="mt-5"><p class="text-xs font-bold uppercase tracking-[.14em] text-slate-400">{{ scholarship.provider }}</p><h3 class="mt-2 text-xl font-extrabold leading-snug text-[#17136b]">{{ scholarship.name }}</h3></div>
     <div class="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-500"><span class="inline-flex items-center gap-1.5"><MapPin :size="15" />{{ scholarship.country }}</span><span class="inline-flex items-center gap-1.5"><CalendarDays :size="15" />{{ formatDate(scholarship.deadline) }}</span></div>
     <div v-if="!compact" class="mt-4 flex flex-wrap gap-2"><span v-for="tag in [scholarship.educationLevel, scholarship.fundingType, fieldLabel(scholarship.fieldOfStudy)]" :key="tag" class="inline-flex rounded-full bg-slate-50 px-2.5 py-1.5 text-[.69rem] font-extrabold text-slate-500">{{ tag }}</span></div>
-    <div class="mt-6 flex items-center justify-between border-t border-slate-100 pt-5"><div><span class="text-2xl font-extrabold text-[#5b45f5]">{{ scholarship.matchPercentage }}%</span><span class="ml-1 text-xs font-semibold text-slate-400">match</span></div><button v-if="setup || selectable" class="inline-flex items-center gap-1 rounded-lg bg-[#5b45f5] px-3 py-2 text-sm font-extrabold text-white" @click="viewDetails">View scholarship <ArrowRight :size="15" /></button><RouterLink v-else-if="!hideDetails" :to="`/scholarships/${scholarship.databaseId || scholarship.id}`" class="inline-flex items-center gap-1 text-sm font-bold text-[#17136b]">View details <ArrowUpRight :size="16" /></RouterLink></div>
+    <div class="mt-6 flex items-center justify-between border-t border-slate-100 pt-5"><div><span class="text-2xl font-extrabold text-[#5b45f5]">{{ matchPercentage(scholarship.matchPercentage) }}%</span><span class="ml-1 text-xs font-semibold text-slate-400">match</span></div><button v-if="setup || selectable" class="inline-flex items-center gap-1 rounded-lg bg-[#5b45f5] px-3 py-2 text-sm font-extrabold text-white" @click="viewDetails">View scholarship <ArrowRight :size="15" /></button><RouterLink v-else-if="!hideDetails" :to="`/scholarships/${scholarship.databaseId || scholarship.id}`" class="inline-flex items-center gap-1 text-sm font-bold text-[#17136b]">View details <ArrowUpRight :size="16" /></RouterLink></div>
   </article>
 </template>

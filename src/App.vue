@@ -11,7 +11,9 @@ import { ApiError, apiRequest } from './api'
 const route = useRoute()
 const { session, profile, tokenBalance, hydrateWorkspace, resetUserState, loadScholarshipCatalog, loadIeltsProgress, loadMentors, hydrateBooking } = useAppState()
 const hideChrome = computed(() => Boolean(route.meta.workspace || route.meta.fullscreen || route.meta.auth))
-const hideNavbar = computed(() => hideChrome.value || Boolean(session.value))
+// The landing page keeps its navigation visible for both guests and signed-in users.
+// Workspace routes provide their own sidebar and top bar instead.
+const hideNavbar = computed(() => hideChrome.value)
 onMounted(async () => {
   void loadScholarshipCatalog()
   void loadMentors()
