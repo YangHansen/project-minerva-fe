@@ -6,7 +6,9 @@ import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import type { Mentor } from '../types'
 import { useAppState } from '../composables/useAppState'
+import { useScholarJourneyPage } from '../composables/useProductTour'
 
+useScholarJourneyPage('mentors')
 const modal = ref(false)
 const chosen = ref<Mentor | null>(null)
 const service = ref('')
@@ -108,7 +110,7 @@ function cancelBooking() {
     <div class="workspace-main">
       <WorkspaceTopbar title="Mentorship" subtitle="Find mentors whose experience matches your scholarship path." />
       <div class="workspace-content">
-        <section class="mentor-hero">
+        <section data-tour="page-mentors" class="mentor-hero">
           <div>
             <p class="eyebrow">Scholarship-aware support</p>
             <h2>{{ scholarship ? `Mentors for ${scholarship.name}` : 'Select a scholarship for tailored mentor matches' }}</h2>

@@ -3,9 +3,12 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Check, CheckCircle2, Coins, CreditCard, LockKeyhole, Sparkles } from 'lucide-vue-next'
 import { useAppState } from '../composables/useAppState'
+import { useScholarJourneyPage } from '../composables/useProductTour'
 import { apiRequest } from '../api'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
+
+useScholarJourneyPage('tokens')
 
 interface Pack { id: string; name: string; tokens: number; price: string; description: string; badge: string }
 // ponytail: fallback mirrors the backend packs so the page renders offline
@@ -81,7 +84,7 @@ async function purchaseTokens() {
     <div class="workspace-main">
       <WorkspaceTopbar title="Tokens & payment" subtitle="Manage your tokens for optional Minerva preparation feedback." />
 
-      <div class="workspace-content">
+      <div data-tour="page-tokens" class="workspace-content">
         <section class="mx-auto max-w-[1180px]">
           <div class="grid gap-5 lg:grid-cols-[1.35fr_.85fr]">
             <section class="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#241979] via-[#2d1e8e] to-[#1b126d] p-7 text-white shadow-[0_20px_40px_rgba(36,25,121,.2)] sm:p-8">

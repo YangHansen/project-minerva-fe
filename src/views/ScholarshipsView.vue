@@ -7,7 +7,10 @@ import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import { apiRequest } from '../api'
 import { useAppState } from '../composables/useAppState'
+import { useScholarJourneyPage } from '../composables/useProductTour'
 import type { Scholarship } from '../types'
+
+useScholarJourneyPage('discover')
 
 const loading = ref(true)
 const error = ref('')
@@ -69,7 +72,7 @@ const reload = () => window.location.reload()
           <div class="recommendation-count"><strong>{{ results.slice(0, 3).length }}</strong><span>top matches</span></div>
         </section>
 
-        <section class="discover-results">
+        <section data-tour="page-discover" class="discover-results">
           <div class="discover-section-heading"><div><p class="workspace-kicker">{{ showChatRecommendations ? 'Minerva chat recommendations' : !isFiltered && sort === 'match' ? 'Recommended opportunities' : 'Explore all opportunities' }}</p><h2>{{ showChatRecommendations ? 'Your latest AI recommendations' : !isFiltered && sort === 'match' ? 'Scholarships matched to you' : 'Find the right scholarship' }}</h2></div><p><strong>{{ results.length }}</strong> scholarships available</p></div>
 
           <div class="discover-filter-panel">

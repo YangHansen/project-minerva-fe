@@ -9,6 +9,7 @@ import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseModal from '../components/common/BaseModal.vue'
 import { useAppState } from '../composables/useAppState'
+import { useScholarJourneyPage } from '../composables/useProductTour'
 import { API_BASE_URL, apiRequest } from '../api'
 import {
   evaluateIeltsSpeaking, evaluateIeltsWriting, fetchIeltsSpeakingQuestionVoice, getIeltsSet,
@@ -18,6 +19,7 @@ import type {
   IeltsAiEvaluation, IeltsExercise, IeltsSubmissionResult, IeltsSkillBand,
 } from '../services/ielts'
 
+useScholarJourneyPage('test')
 type Skill = 'Listening' | 'Reading' | 'Writing' | 'Speaking'
 type Stage = 'catalog' | 'mode' | 'instructions' | 'microphone' | 'exam' | 'results'
 type Mode = 'practice' | 'simulation'
@@ -611,7 +613,7 @@ onUnmounted(() => {
 <RouterLink to="/scholarships" class="btn-primary">Browse scholarships</RouterLink>
 </section>
         <template v-else>
-          <section class="rounded-[22px] border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-[#f4f2ff] p-5 shadow-[0_12px_30px_rgba(91,69,245,.06)] sm:p-6">
+          <section data-tour="page-test" class="rounded-[22px] border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-[#f4f2ff] p-5 shadow-[0_12px_30px_rgba(91,69,245,.06)] sm:p-6">
 <div class="flex flex-wrap items-center justify-between gap-6">
 <div>
 <p class="text-xs font-extrabold uppercase tracking-[.16em] text-[#5b45f5]">Minerva test preparation</p>

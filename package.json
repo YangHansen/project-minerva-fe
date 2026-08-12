@@ -12,8 +12,10 @@
   "dependencies": {
     "@elysia/eden": "1.4.9",
     "@fontsource-variable/nunito": "^5.3.0",
+    "@fontsource-variable/nunito-sans": "^5.3.0",
     "@tailwindcss/vite": "^4.1.18",
     "docx": "^9.7.1",
+    "driver.js": "^1.8.0",
     "gsap": "^3.15.0",
     "jspdf": "^4.2.1",
     "lucide-vue-next": "^0.468.0",

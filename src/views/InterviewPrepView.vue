@@ -6,7 +6,16 @@ import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseSelect from '../components/common/BaseSelect.vue'
 import { useAppState } from '../composables/useAppState'
 import { apiRequest } from '../api'
+import {
+  hasSeenTour,
+  interviewHomeTourSteps,
+  interviewLiveTourSteps,
+  isScholarJourneyActive,
+  startProductTour,
+  useScholarJourneyPage,
+} from '../composables/useProductTour'
 
+useScholarJourneyPage('interview')
 type Stage = 'home' | 'setup' | 'history' | 'language' | 'ready' | 'live' | 'results'
 interface InterviewQuestion { id: string; text: string }
 interface AnswerEvaluation {
@@ -462,7 +471,29 @@ const scrollConversationToEnd = async () => {
 }
 watch(() => conversation.value.length, () => { void scrollConversationToEnd() })
 
-onMounted(() => { void loadInterviewHistory() })
+const startInterviewHomeTour = (force = false) => {
+  if (stage.value !== 'home' || isScholarJourneyActive()) return
+  startProductTour('interview-home', interviewHomeTourSteps(), { force })
+}
+const startInterviewLiveTour = (force = false) => {
+  if (stage.value !== 'live' || isScholarJourneyActive()) return
+  startProductTour('interview-live', interviewLiveTourSteps(), { force })
+}
+watch(stage, async (value) => {
+  await nextTick()
+  if (isScholarJourneyActive()) return
+  if (value === 'home' && !hasSeenTour('interview-home')) startInterviewHomeTour()
+  if (value === 'live' && !hasSeenTour('interview-live')) {
+    window.setTimeout(() => startInterviewLiveTour(), 500)
+  }
+})
+
+onMounted(() => {
+  void loadInterviewHistory()
+  if (!isScholarJourneyActive() && stage.value === 'home') {
+    window.setTimeout(() => startInterviewHomeTour(), 700)
+  }
+})
 
 onBeforeUnmount(() => {
   stopKokoroVoice()
@@ -479,23 +510,28 @@ onBeforeUnmount(() => {
     <div class="workspace-main">
       <WorkspaceTopbar title="Interview Prep" subtitle="Practice scholarship interviews with tailored questions and feedback." />
       <div class="workspace-content" :class="stage === 'live' && 'interview-live-content'">
-        <section v-if="stage === 'home'" class="mx-auto w-full max-w-5xl py-4 sm:py-8">
-          <p class="eyebrow">AI interview practice</p>
-          <h1 class="mt-2 text-3xl font-extrabold text-[#17136b]">What would you like to do?</h1>
-          <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-500">Start a tailored scholarship interview or review your saved transcripts and AI feedback.</p>
+        <section v-if="stage === 'home'" data-tour="page-interview" class="mx-auto w-full max-w-5xl py-4 sm:py-8">
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p class="eyebrow">AI interview practice</p>
+              <h1 class="mt-2 text-3xl font-extrabold text-[#17136b]">What would you like to do?</h1>
+              <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-500">Start a tailored scholarship interview or review your saved transcripts and AI feedback.</p>
+            </div>
+            <button type="button" class="rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-extrabold text-[#5b45f5]" @click="startInterviewHomeTour(true)">Show tour</button>
+          </div>
           <div class="mt-7 grid gap-5 md:grid-cols-2">
-            <button class="rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-7 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#5b45f5] hover:shadow-md" @click="stage = 'setup'">
+            <button data-tour="interview-start" class="rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-7 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#5b45f5] hover:shadow-md" @click="stage = 'setup'">
               <span class="grid size-12 place-items-center rounded-2xl bg-[#5b45f5] text-white"><Play :size="22" /></span>
               <h2 class="mt-5 text-xl font-extrabold text-[#17136b]">Start new interview</h2>
               <p class="mt-2 text-sm leading-6 text-slate-500">Choose a scholarship, add optional context, and practise with Minerva AI.</p>
             </button>
-            <button class="rounded-3xl border border-slate-200 bg-white p-7 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#5b45f5] hover:shadow-md" @click="stage = 'history'; void loadInterviewHistory()">
+            <button data-tour="interview-history" class="rounded-3xl border border-slate-200 bg-white p-7 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#5b45f5] hover:shadow-md" @click="stage = 'history'; void loadInterviewHistory()">
               <span class="grid size-12 place-items-center rounded-2xl bg-violet-100 text-[#5b45f5]"><Clock3 :size="22" /></span>
               <h2 class="mt-5 text-xl font-extrabold text-[#17136b]">Check interview history</h2>
               <p class="mt-2 text-sm leading-6 text-slate-500">Read saved transcripts and revisit AI analysis from earlier interview sessions.</p>
             </button>
           </div>
-          <p class="mt-6 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">Your camera stays on your device. Recorded audio is sent only to create a transcript and AI feedback; Minerva never stores your MP3, WebM, or other audio file.</p>
+          <p data-tour="interview-privacy" class="mt-6 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">Your camera stays on your device. Recorded audio is sent only to create a transcript and AI feedback; Minerva never stores your MP3, WebM, or other audio file.</p>
         </section>
 
         <section v-else-if="stage === 'setup'" class="interview-setup">
@@ -630,6 +666,7 @@ onBeforeUnmount(() => {
               <span class="mt-1 block text-[.7rem] font-bold text-slate-400">{{ language }} · question {{ questionIndex + 1 }}/{{ questions.length }}</span>
             </div>
             <div class="flex items-center gap-2.5">
+              <button type="button" class="rounded-xl border border-violet-200 bg-white px-3 py-2 text-[.68rem] font-extrabold text-[#5b45f5]" @click="startInterviewLiveTour(true)">Tour</button>
               <span class="rounded-full bg-emerald-50 px-3 py-2 text-[.68rem] font-black uppercase tracking-[.08em] text-emerald-700">{{ isPaused ? 'Paused' : 'Connected' }}</span>
               <strong class="rounded-xl bg-violet-50 px-3.5 py-2 text-sm tabular-nums text-[#5b45f5]">{{ formatted }}</strong>
             </div>
@@ -655,7 +692,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div class="flex min-h-[220px] flex-col overflow-hidden rounded-2xl border border-violet-100 bg-white lg:min-h-0">
+            <div data-tour="interview-conversation" class="flex min-h-[220px] flex-col overflow-hidden rounded-2xl border border-violet-100 bg-white lg:min-h-0">
               <div class="flex shrink-0 items-center justify-between gap-3 border-b border-violet-50 px-4 py-2.5">
                 <p class="text-[.68rem] font-extrabold uppercase tracking-[.14em] text-slate-400">Conversation</p>
                 <p v-if="currentAnswer" class="text-[11px] font-bold text-emerald-700">Clarity {{ currentAnswer.evaluation.clarity }} · Relevance {{ currentAnswer.evaluation.relevance }} · Structure {{ currentAnswer.evaluation.structure }}</p>
@@ -678,7 +715,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div class="mx-4 mb-3 flex shrink-0 flex-col justify-between gap-3 rounded-2xl border border-violet-100 bg-white px-4 py-3 sm:mx-5 sm:flex-row sm:items-center">
+          <div data-tour="interview-question" class="mx-4 mb-3 flex shrink-0 flex-col justify-between gap-3 rounded-2xl border border-violet-100 bg-white px-4 py-3 sm:mx-5 sm:flex-row sm:items-center">
             <div class="flex min-w-0 gap-3">
               <span class="grid size-8 shrink-0 place-items-center rounded-xl bg-violet-100 text-sm font-black text-[#5b45f5]">{{ questionIndex + 1 }}</span>
               <div class="min-w-0">
@@ -696,7 +733,7 @@ onBeforeUnmount(() => {
 
           <p v-if="aiError" class="mx-4 mb-3 shrink-0 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700 sm:mx-5">{{ aiError }}</p>
           <footer class="flex shrink-0 flex-wrap items-center justify-center gap-2.5 border-t border-violet-100 bg-white/85 px-4 py-3">
-            <button class="grid size-11 place-items-center rounded-xl border text-white disabled:opacity-50" :class="recording ? 'border-red-500 bg-red-600' : 'border-violet-200 bg-[#5b45f5]'" :disabled="submittingAnswer || isPaused || aiSpeaking" :aria-label="recording ? 'Stop recording' : 'Record answer'" @click="toggleMicrophone">
+            <button data-tour="interview-mic" class="grid size-11 place-items-center rounded-xl border text-white disabled:opacity-50" :class="recording ? 'border-red-500 bg-red-600' : 'border-violet-200 bg-[#5b45f5]'" :disabled="submittingAnswer || isPaused || aiSpeaking" :aria-label="recording ? 'Stop recording' : 'Record answer'" @click="toggleMicrophone">
               <Pause v-if="recording" :size="18" /><Mic v-else :size="18" />
             </button>
             <button class="grid size-11 place-items-center rounded-xl border border-violet-200 bg-white text-[#5b45f5]" :aria-label="cameraEnabled ? 'Turn off camera' : 'Turn on camera'" :title="cameraEnabled ? 'Turn off camera' : 'Turn on camera'" @click="toggleCamera">
@@ -707,7 +744,7 @@ onBeforeUnmount(() => {
             </button>
             <span v-if="submittingAnswer" class="text-xs font-bold text-[#5b45f5]">Minerva is listening…</span>
             <span v-else-if="conversation.length && !currentAnswer" class="text-xs font-bold text-emerald-700">Keep the conversation going</span>
-            <button class="btn-primary ml-1" :disabled="submittingAnswer || completingInterview" @click="finish">
+            <button data-tour="interview-finish" class="btn-primary ml-1" :disabled="submittingAnswer || completingInterview" @click="finish">
               <CircleStop :size="16" />{{ completingInterview ? 'Preparing results…' : 'Finish interview' }}
             </button>
           </footer>

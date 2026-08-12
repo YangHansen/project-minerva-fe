@@ -5,11 +5,13 @@ import { useRouter } from 'vue-router'
 import type { DocumentKind, ScholarshipDocument } from '../types'
 import { documentTemplates, type DocumentTemplate } from '../data/documentTemplates'
 import { useAppState } from '../composables/useAppState'
+import { useScholarJourneyPage } from '../composables/useProductTour'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseSelect from '../components/common/BaseSelect.vue'
 import BaseModal from '../components/common/BaseModal.vue'
 
+useScholarJourneyPage('documents')
 const router = useRouter()
 const { selectedId, applicationIds, documents, addDocument, uploadDocument, deleteDocument, selectScholarship, toast, getScholarship } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
@@ -172,7 +174,7 @@ const createDocument = async () => {
     <WorkspaceSidebar active="documents" />
     <div class="workspace-main">
       <WorkspaceTopbar title="Documents" :subtitle="selected ? `Create, edit, and organize documents for ${selected.name}.` : 'Create, edit, and organize your application documents.'" />
-      <div class="workspace-content">
+      <div data-tour="page-documents" class="workspace-content">
         <section v-if="!selected" class="notion-select-state">
           <div class="notion-select-icon"><Folder :size="31" /></div>
           <h1>Select a scholarship first</h1>
