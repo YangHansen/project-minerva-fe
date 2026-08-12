@@ -38,10 +38,11 @@ const landing = `
 `
 
 const workspace = `
-  [&_.workspace-shell]:grid [&_.workspace-shell]:min-h-screen [&_.workspace-shell]:grid-cols-[248px_minmax(0,1fr)] [&_.workspace-shell]:bg-[#f6f7fb]
+  [&_.workspace-shell]:grid [&_.workspace-shell]:min-h-screen [&_.workspace-shell]:grid-cols-[248px_minmax(0,1fr)] [&_.workspace-shell]:bg-[#f6f7fb] [&_.workspace-shell]:transition-[grid-template-columns] [&_.workspace-shell]:duration-300 [&_.workspace-shell]:ease-in-out
   [&_.workspace-shell:has(.collapsed)]:grid-cols-[78px_minmax(0,1fr)]
   max-[900px]:[&_.workspace-shell]:grid-cols-1 max-[900px]:[&_.workspace-shell:has(.collapsed)]:grid-cols-1
-  [&_.workspace-main]:min-w-0 [&_.workspace-content]:p-[clamp(18px,3vw,34px)]
+  [&_.workspace-sidebar]:transition-[padding,width] [&_.workspace-sidebar]:duration-300 [&_.workspace-sidebar]:ease-in-out
+  [&_.workspace-main]:min-w-0 [&_.workspace-main]:transition-[padding] [&_.workspace-main]:duration-300 [&_.workspace-main]:ease-in-out [&_.workspace-content]:p-[clamp(18px,3vw,34px)]
   [&_.workspace-kicker]:text-[.67rem] [&_.workspace-kicker]:font-black [&_.workspace-kicker]:uppercase [&_.workspace-kicker]:tracking-[.14em] [&_.workspace-kicker]:text-[#5b45f5]
   [&_.workspace-muted-label]:text-[.68rem] [&_.workspace-muted-label]:font-black [&_.workspace-muted-label]:uppercase [&_.workspace-muted-label]:tracking-[.12em] [&_.workspace-muted-label]:text-slate-400
   [&_.notion-select-state]:mx-auto [&_.notion-select-state]:my-[clamp(48px,12vh,120px)] [&_.notion-select-state]:max-w-[620px] [&_.notion-select-state]:text-center

@@ -5,6 +5,7 @@ import { GraduationCap, Search, SlidersHorizontal, Sparkles, X } from 'lucide-vu
 import ScholarshipCard from '../components/scholarships/ScholarshipCard.vue'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
+import BaseSelect from '../components/common/BaseSelect.vue'
 import { apiRequest } from '../api'
 import { useAppState } from '../composables/useAppState'
 import { useScholarJourneyPage } from '../composables/useProductTour'
@@ -39,6 +40,35 @@ const countries = computed(() => [...new Set(scholarships.value.map((item) => it
 const levels = computed(() => [...new Set(scholarships.value.map((item) => item.educationLevel))].sort())
 const majors = computed(() => [...new Set(scholarships.value.flatMap((item) => majorList(item.fieldOfStudy)).filter((item) => item !== 'All fields'))].sort())
 const fundings = computed(() => [...new Set(scholarships.value.map((item) => item.fundingType))].sort())
+const countryOptions = computed(() => ['All destinations', ...countries.value])
+const levelOptions = computed(() => ['All study levels', ...levels.value])
+const majorOptions = computed(() => ['All majors', ...majors.value])
+const fundingOptions = computed(() => ['All funding', ...fundings.value])
+const sortOptions = ['Best match', 'Deadline', 'Name']
+const filterValue = (value: string, allLabel: string) => value || allLabel
+const setFilterValue = (value: string, allLabel: string) => (value === allLabel ? '' : value)
+const countryFilter = computed({
+  get: () => filterValue(country.value, 'All destinations'),
+  set: (value: string) => { country.value = setFilterValue(value, 'All destinations') },
+})
+const levelFilter = computed({
+  get: () => filterValue(level.value, 'All study levels'),
+  set: (value: string) => { level.value = setFilterValue(value, 'All study levels') },
+})
+const majorFilter = computed({
+  get: () => filterValue(major.value, 'All majors'),
+  set: (value: string) => { major.value = setFilterValue(value, 'All majors') },
+})
+const fundingFilter = computed({
+  get: () => filterValue(funding.value, 'All funding'),
+  set: (value: string) => { funding.value = setFilterValue(value, 'All funding') },
+})
+const sortFilter = computed({
+  get: () => (sort.value === 'deadline' ? 'Deadline' : sort.value === 'name' ? 'Name' : 'Best match'),
+  set: (value: string) => {
+    sort.value = value === 'Deadline' ? 'deadline' : value === 'Name' ? 'name' : 'match'
+  },
+})
 const firstSetup = computed(() => Boolean(route.query.recommended) || Boolean(session.value && applicationIds.value.length === 0))
 const showRecommendationHighlight = computed(() => Boolean(route.query.recommended))
 const isFiltered = computed(() => Boolean(query.value || country.value || level.value || major.value || funding.value))
@@ -78,14 +108,32 @@ const reload = () => window.location.reload()
           <div class="discover-filter-panel">
             <div class="discover-filter-grid">
               <label class="discover-search"><span class="sr-only">Search scholarships</span><Search :size="18" /><input v-model="query" placeholder="Search scholarship, country, or field" /></label>
-              <label><span>Destination</span><select v-model="country"><option value="">All destinations</option><option v-for="item in countries" :key="item">{{ item }}</option></select></label>
-              <label><span>Study level</span><select v-model="level"><option value="">All study levels</option><option v-for="item in levels" :key="item">{{ item }}</option></select></label>
-              <label><span>Major</span><select v-model="major"><option value="">All majors</option><option v-for="item in majors" :key="item">{{ item }}</option></select></label>
-              <label><span>Funding</span><select v-model="funding"><option value="">All funding</option><option v-for="item in fundings" :key="item">{{ item }}</option></select></label>
+              <label>
+                <span>Destination</span>
+                <BaseSelect v-model="countryFilter" class="discover-base-select" :options="countryOptions" placeholder="All destinations" />
+              </label>
+              <label>
+                <span>Study level</span>
+                <BaseSelect v-model="levelFilter" class="discover-base-select" :options="levelOptions" placeholder="All study levels" />
+              </label>
+              <label>
+                <span>Major</span>
+                <BaseSelect v-model="majorFilter" class="discover-base-select" :options="majorOptions" placeholder="All majors" searchable />
+              </label>
+              <label>
+                <span>Funding</span>
+                <BaseSelect v-model="fundingFilter" class="discover-base-select" :options="fundingOptions" placeholder="All funding" />
+              </label>
             </div>
             <div class="discover-filter-footer">
               <div class="active-filter-list"><SlidersHorizontal :size="16" /><span v-if="!isFiltered">Use filters to narrow your recommendations</span><button v-if="country" @click="country = ''">{{ country }} <X :size="12" /></button><button v-if="level" @click="level = ''">{{ level }} <X :size="12" /></button><button v-if="major" @click="major = ''"><GraduationCap :size="12" />{{ major }} <X :size="12" /></button><button v-if="funding" @click="funding = ''">{{ funding }} <X :size="12" /></button><button v-if="query" @click="query = ''">&ldquo;{{ query }}&rdquo; <X :size="12" /></button></div>
-              <div class="discover-sort"><button v-if="isFiltered" @click="clear">Clear all</button><label>Sort by<select v-model="sort"><option value="match">Best match</option><option value="deadline">Deadline</option><option value="name">Name</option></select></label></div>
+              <div class="discover-sort">
+                <button v-if="isFiltered" @click="clear">Clear all</button>
+                <label class="discover-sort-label">
+                  Sort by
+                  <BaseSelect v-model="sortFilter" class="discover-sort-select" :options="sortOptions" placeholder="Best match" />
+                </label>
+              </div>
             </div>
           </div>
 
@@ -98,3 +146,58 @@ const reload = () => window.location.reload()
     </div>
   </main>
 </template>
+
+<style scoped>
+.discover-base-select :deep(.base-select-trigger) {
+  min-height: 48px;
+  border-radius: 12px;
+  border-color: #e2e8f0;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.discover-base-select :deep(.base-select-menu) {
+  z-index: 50;
+  border-radius: 12px;
+  border-color: #ddd6fe;
+  box-shadow: 0 16px 32px rgb(55 38 160 / 0.14);
+}
+.discover-base-select :deep(.base-select-options button) {
+  border-radius: 10px;
+  font-size: 0.78rem;
+}
+.discover-base-select :deep(.base-select-search) {
+  margin: 0.5rem;
+}
+.discover-base-select :deep(.base-select-search input) {
+  font-size: 0.78rem;
+}
+.discover-sort-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+.discover-sort-select {
+  min-width: 140px;
+}
+.discover-sort-select :deep(.base-select-trigger) {
+  min-height: 40px;
+  border-radius: 10px;
+  border-color: #e2e8f0;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.discover-sort-select :deep(.base-select-menu) {
+  z-index: 50;
+  border-radius: 12px;
+  border-color: #ddd6fe;
+}
+.discover-sort-select :deep(.base-select-options button) {
+  border-radius: 10px;
+  font-size: 0.78rem;
+}
+</style>

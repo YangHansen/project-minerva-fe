@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { AlertCircle, Bot, History, LoaderCircle, MessageCircle, Plus, RefreshCw, Send, Sparkles, Trash2, X } from 'lucide-vue-next'
 import { ApiError, apiRequest } from '../../api'
 import { useAppState } from '../../composables/useAppState'
+import BaseSelect from './BaseSelect.vue'
 import type { Scholarship } from '../../types'
 
 interface ChatMessage {
@@ -51,6 +52,13 @@ const consultationScholarshipId = ref(selectedId.value || '')
 const consultationScholarships = computed(() => [...new Set([...applicationIds.value, ...savedIds.value, ...(selectedId.value ? [selectedId.value] : [])])]
   .map((id) => getScholarship(id))
   .filter((item): item is Scholarship => Boolean(item)))
+const consultationScholarshipNames = computed(() => consultationScholarships.value.map((item) => item.name))
+const consultationScholarshipName = computed({
+  get: () => consultationScholarships.value.find((item) => item.id === consultationScholarshipId.value)?.name || '',
+  set: (name: string) => {
+    consultationScholarshipId.value = consultationScholarships.value.find((item) => item.name === name)?.id || ''
+  },
+})
 const messageArea = ref<HTMLElement | null>(null)
 const activeThread = computed(() => threads.value.find((thread) => thread.id === activeId.value) || null)
 const activeApplicationId = computed(() => selectedId.value ? backendApplicationIds.value[selectedId.value] : undefined)
@@ -442,7 +450,18 @@ const formatDate = (value: string) => {
               </template>
               <template v-else>
                 <span class="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-violet-100 text-[#5b45f5]"><Bot :size="27" /></span><h3 class="text-center text-lg font-bold text-[#17136b]">How can I help?</h3><p class="text-center text-sm leading-6 text-slate-500">Choose a scholarship you already saved to consult it, or let Minerva ask about your goals before recommending new matches.</p>
-                <div v-if="consultationScholarships.length" class="rounded-xl border border-violet-100 bg-white p-3 text-left"><label class="block text-xs font-bold text-[#17136b]">Consult an existing scholarship<select v-model="consultationScholarshipId" class="mt-2 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 outline-none focus:border-violet-400"><option disabled value="">Choose a scholarship</option><option v-for="item in consultationScholarships" :key="item.id" :value="item.id">{{ item.name }}</option></select></label><button type="button" class="mt-3 w-full rounded-lg bg-[#5b45f5] px-3 py-2.5 text-sm font-bold text-white disabled:opacity-50" :disabled="!consultationScholarshipId" @click="beginScholarshipConsultation">Consult this scholarship</button></div>
+                <div v-if="consultationScholarships.length" class="rounded-xl border border-violet-100 bg-white p-3 text-left">
+                  <label class="block text-xs font-bold text-[#17136b]">
+                    Consult an existing scholarship
+                    <BaseSelect
+                      v-model="consultationScholarshipName"
+                      class="consultation-scholarship-select mt-2"
+                      :options="consultationScholarshipNames"
+                      placeholder="Choose a scholarship"
+                    />
+                  </label>
+                  <button type="button" class="mt-3 w-full rounded-lg bg-[#5b45f5] px-3 py-2.5 text-sm font-bold text-white disabled:opacity-50" :disabled="!consultationScholarshipId" @click="beginScholarshipConsultation">Consult this scholarship</button>
+                </div>
                 <p v-else class="rounded-xl border border-dashed border-violet-200 bg-white px-3 py-3 text-center text-xs leading-5 text-slate-500">Save a scholarship or create an application folder first to consult it directly.</p>
                 <button type="button" class="w-full rounded-xl border border-violet-200 bg-white px-3 py-3 text-sm font-bold text-[#5b45f5]" @click="beginRecommendationIntake">Help me find the right scholarships</button>
               </template>
@@ -462,3 +481,24 @@ const formatDate = (value: string) => {
     </button>
   </div>
 </template>
+
+<style scoped>
+.consultation-scholarship-select :deep(.base-select-trigger) {
+  min-height: 44px;
+  border-color: #ddd6fe;
+  border-radius: 12px;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.consultation-scholarship-select :deep(.base-select-menu) {
+  z-index: 60;
+  border-color: #ddd6fe;
+  border-radius: 12px;
+  box-shadow: 0 16px 32px rgb(55 38 160 / 0.16);
+}
+.consultation-scholarship-select :deep(.base-select-options button) {
+  border-radius: 10px;
+  font-size: 0.8125rem;
+}
+</style>
