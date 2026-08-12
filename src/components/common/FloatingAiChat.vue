@@ -24,7 +24,7 @@ interface ChatThread {
 
 type UnknownRecord = Record<string, unknown>
 
-const { selectedId, applicationIds, backendApplicationIds, profile, savedIds, scholarships, getScholarship, selectScholarship, session, setRecommendedScholarships, syncAiTokenBalance } = useAppState()
+const { selectedId, applicationIds, backendApplicationIds, savedIds, getScholarship, selectScholarship, session, setRecommendedScholarships, syncAiTokenBalance } = useAppState()
 const open = ref(false)
 const showHistory = ref(false)
 const input = ref('')
@@ -326,24 +326,6 @@ const send = async () => {
   }
 }
 
-const rankedScholarshipIds = () => scholarships.value
-  .map((item) => {
-    const user = profile.value
-    const intake = recommendationAnswers.value.join(' ').toLowerCase()
-    let score = item.matchPercentage
-    if (user?.destinationCountry && item.country.toLowerCase().includes(user.destinationCountry.toLowerCase())) score += 3
-    if (user?.targetEducationLevel && item.educationLevel.toLowerCase().includes(user.targetEducationLevel.toLowerCase())) score += 2
-    if (user?.fieldOfStudy && (item.fieldOfStudy === 'All fields' || item.fieldOfStudy.toLowerCase().includes(user.fieldOfStudy.toLowerCase()))) score += 3
-    if (user?.fundingPreference && item.fundingType.toLowerCase().includes(user.fundingPreference.toLowerCase())) score += 2
-    if (intake.includes('fully') && item.fundingType.toLowerCase().includes('fully')) score += 5
-    if (intake.includes(item.country.toLowerCase())) score += 6
-    if (item.fieldOfStudy !== 'All fields' && intake.includes(item.fieldOfStudy.toLowerCase())) score += 6
-    return { id: item.id, score }
-  })
-  .sort((left, right) => right.score - left.score)
-  .map((item) => item.id)
-  .sort((left, right) => (seenRecommendationIds.value.includes(left) ? 1 : 0) - (seenRecommendationIds.value.includes(right) ? 1 : 0))
-
 const findRecommendations = async () => {
   if (recommendationLoading.value) return
   const generation = accountGeneration
@@ -352,7 +334,7 @@ const findRecommendations = async () => {
   try {
     const payload = await apiRequest<{ scholarshipIds: string[]; remainingToday: number; tokenBalance: number }>('/api/ai/recommendations', {
       method: 'POST',
-      body: { rankedScholarshipIds: rankedScholarshipIds() },
+      body: { answers: recommendationAnswers.value },
     })
     if (!isCurrentAccount(generation)) return
     const matches = payload.scholarshipIds.map((id) => getScholarship(id)).filter((item): item is Scholarship => Boolean(item))

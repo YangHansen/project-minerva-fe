@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Edit3, FilePlus2, FileText, Folder, Search, Trash2, X } from 'lucide-vue-next'
+import { Edit3, Eye, FilePlus2, FileText, Folder, Search, Trash2, Upload, X } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import type { DocumentKind, ScholarshipDocument } from '../types'
 import { useAppState } from '../composables/useAppState'
+import { API_BASE_URL } from '../api'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseSelect from '../components/common/BaseSelect.vue'
 
 const router = useRouter()
-const { selectedId, applicationIds, documents, addDocument, deleteDocument, selectScholarship, toast, getScholarship } = useAppState()
+const { selectedId, applicationIds, documents, addDocument, uploadDocument, deleteDocument, selectScholarship, toast, getScholarship } = useAppState()
 const selected = computed(() => selectedId.value ? getScholarship(selectedId.value) : undefined)
 const availableScholarships = computed(() => applicationIds.value.map((id) => getScholarship(id)).filter((item): item is NonNullable<typeof item> => Boolean(item)))
 const query = ref('')
@@ -18,6 +19,7 @@ const sortOptions = ['Last modified', 'Oldest modified', 'Document title']
 const isCreateOpen = ref(false)
 const newDocumentTitle = ref('')
 const newDocumentKind = ref<DocumentKind>('essay')
+const newDocumentFile = ref<File | null>(null)
 const creatingDocument = ref(false)
 const deletingDocumentId = ref<string | null>(null)
 const createError = ref('')
@@ -68,6 +70,21 @@ const editedLabel = (date: string) => {
 }
 
 const openEditor = (doc: ScholarshipDocument) => router.push(`/documents/${doc.id}`)
+const openUploadedFile = async (doc: ScholarshipDocument) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/documents/${encodeURIComponent(doc.id)}/file`, { credentials: 'include' })
+    if (!response.ok) throw new Error('Unable to open the uploaded file.')
+    const url = URL.createObjectURL(await response.blob())
+    const link = document.createElement('a')
+    link.href = url
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (caught) {
+    toast(caught instanceof Error ? caught.message : 'Unable to open the uploaded file.', 'info')
+  }
+}
 const removeDocument = async (doc: ScholarshipDocument) => {
   if (deletingDocumentId.value || !window.confirm(`Delete "${doc.title}"? This permanently removes its saved versions and AI reviews.`)) return
   deletingDocumentId.value = doc.id
@@ -83,21 +100,31 @@ const removeDocument = async (doc: ScholarshipDocument) => {
 const openCreateDocument = () => {
   newDocumentTitle.value = ''
   newDocumentKind.value = 'essay'
+  newDocumentFile.value = null
   createError.value = ''
   isCreateOpen.value = true
 }
 const createDocument = async () => {
-  if (!selectedId.value || !newDocumentTitle.value.trim() || creatingDocument.value) return
+  if (!selectedId.value || (!newDocumentFile.value && !newDocumentTitle.value.trim()) || creatingDocument.value) return
   const type = selectedDocumentType.value
   creatingDocument.value = true
   createError.value = ''
   try {
-    const doc = await addDocument(selectedId.value, newDocumentTitle.value.trim(), type.kind, {
-      category: type.label,
-      description: type.description,
-    })
-    isCreateOpen.value = false
-    await router.push(`/documents/${doc.id}`)
+    if (newDocumentFile.value) {
+      await uploadDocument(selectedId.value, newDocumentFile.value, newDocumentTitle.value, type.kind, {
+        category: type.label,
+        description: type.description,
+      })
+      isCreateOpen.value = false
+      toast('External document uploaded to this scholarship.')
+    } else {
+      const doc = await addDocument(selectedId.value, newDocumentTitle.value.trim(), type.kind, {
+        category: type.label,
+        description: type.description,
+      })
+      isCreateOpen.value = false
+      await router.push(`/documents/${doc.id}`)
+    }
   } catch (caught) {
     createError.value = caught instanceof Error ? caught.message : 'Unable to create the document.'
   } finally {
@@ -153,7 +180,9 @@ const createDocument = async () => {
 <FileText :size="22" />
 </span>
 <div class="library-card-actions">
-<button @click="openEditor(doc)">
+<button v-if="doc.uploadName" @click="openUploadedFile(doc)">
+<Eye :size="15" />Preview</button>
+<button v-else @click="openEditor(doc)">
 <Edit3 :size="15" />Edit</button>
 <button :disabled="deletingDocumentId === doc.id" :aria-label="`Delete ${doc.title}`" class="text-rose-600" @click="removeDocument(doc)">
 <Trash2 :size="16" />{{ deletingDocumentId === doc.id ? 'Deleting…' : 'Delete' }}
@@ -163,7 +192,7 @@ const createDocument = async () => {
               <div class="library-card-copy">
 <h2>{{ doc.title }}</h2>
 <p>{{ doc.description }}</p>
-<small>{{ editedLabel(doc.updatedAt) }}</small>
+<small>{{ doc.uploadName ? `Uploaded: ${doc.uploadName}` : editedLabel(doc.updatedAt) }}</small>
 </div>
               <div class="library-card-footer">
 <span>{{ doc.category }}</span>
@@ -196,13 +225,18 @@ const createDocument = async () => {
 <option v-for="type in documentTypes" :key="type.kind" :value="type.kind">{{ type.label }}</option>
 </select>
 </label>
-        <label>Document title<input v-model="newDocumentTitle" :placeholder="selectedDocumentType.label" autofocus />
+        <label>Document title<input v-model="newDocumentTitle" :placeholder="newDocumentFile ? 'Optional — filename will be used' : selectedDocumentType.label" autofocus />
 </label>
+        <label class="document-upload-field">
+          <span>External file <small>Optional</small></span>
+          <span class="document-upload-picker"><Upload :size="17" />{{ newDocumentFile?.name || 'Choose PDF, DOC, DOCX, TXT, PNG, or JPG' }}</span>
+          <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" @change="newDocumentFile = ($event.target as HTMLInputElement).files?.[0] || null" />
+        </label>
         <p class="document-create-hint">{{ selectedDocumentType.description }}</p>
         <p v-if="createError" class="error">{{ createError }}</p>
         <div class="document-create-actions">
 <button type="button" class="btn-secondary" :disabled="creatingDocument" @click="isCreateOpen = false">Cancel</button>
-<button type="submit" class="btn-primary" :disabled="creatingDocument || !newDocumentTitle.trim()">{{ creatingDocument ? 'Creating...' : 'Create & edit' }}</button>
+<button type="submit" class="btn-primary" :disabled="creatingDocument || (!newDocumentFile && !newDocumentTitle.trim())">{{ creatingDocument ? (newDocumentFile ? 'Uploading...' : 'Creating...') : (newDocumentFile ? 'Upload document' : 'Create & edit') }}</button>
 </div>
       </form>
     </div>
@@ -224,4 +258,7 @@ const createDocument = async () => {
 .document-sort-select :deep(.base-select-trigger) { min-height: 46px; padding-inline: .85rem; font-size: .75rem; font-weight: 800; }
 .document-new-button { min-width: 164px; padding-inline: 1rem; white-space: nowrap; }
 @media (max-width: 640px) { .document-sort-control { width: 100%; align-items: flex-start; flex-direction: column; gap: .35rem; } .document-sort-select, .document-new-button { width: 100%; } }
+.document-upload-field small { margin-left: .35rem; color: #94a3b8; font-weight: 700; }
+.document-upload-field > input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.document-upload-picker { display: flex; align-items: center; gap: .6rem; min-height: 48px; margin-top: .45rem; padding: .75rem .9rem; border: 1px dashed #c4b5fd; border-radius: .8rem; color: #5b45f5; background: #faf8ff; font-size: .78rem; font-weight: 800; cursor: pointer; }
 </style>

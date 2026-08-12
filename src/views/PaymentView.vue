@@ -114,7 +114,7 @@ async function purchaseTokens() {
               <div>
                 <p class="eyebrow">Add tokens</p>
                 <h1 class="mt-2 text-3xl font-black tracking-tight text-[#17136b]">Choose a token pack</h1>
-                <p class="mt-2 text-sm text-slate-500">Demo checkout only. No money is processed; completing this form adds tokens to your local demo balance.</p>
+                <p class="mt-2 text-sm text-slate-500">Demo checkout only. No money is processed; completing this form adds tokens to your server-backed demo balance.</p>
               </div>
               <span class="rounded-full bg-violet-50 px-4 py-2 text-xs font-black text-[#5b45f5]">Demo checkout</span>
             </div>
@@ -142,7 +142,7 @@ async function purchaseTokens() {
                 <label class="field-label">Expiry date<input :value="expiryDate" required inputmode="numeric" autocomplete="cc-exp" maxlength="7" class="field mt-2" placeholder="MM / YY" @input="updateExpiryDate" /></label>
                 <label class="field-label">CVC<input :value="cvc" required inputmode="numeric" autocomplete="cc-csc" maxlength="4" class="field mt-2" placeholder="123" @input="updateCvc" /></label>
               </div>
-              <p class="mt-5 flex items-center gap-2 text-xs leading-5 text-slate-500"><LockKeyhole :size="15" class="text-emerald-600" />No payment details are stored or sent. This local demo adds tokens to your current browser balance.</p>
+              <p class="mt-5 flex items-center gap-2 text-xs leading-5 text-slate-500"><LockKeyhole :size="15" class="text-emerald-600" />No payment details are stored or sent. This demo creates a backend transaction and updates your account balance.</p>
               <button class="btn-primary mt-6 w-full justify-center" type="submit" :disabled="processing"><CheckCircle2 v-if="complete" :size="18" />{{ processing ? 'Completing demo payment…' : complete ? 'Payment successful — returning to dashboard' : `Complete demo payment for ${selectedPack.tokens} tokens` }}</button>
             </form>
 
@@ -151,7 +151,7 @@ async function purchaseTokens() {
               <div class="mt-6 flex items-center justify-between border-b border-white/15 pb-5"><div><p class="font-black">{{ selectedPack.name }} pack</p><p class="mt-1 text-sm text-violet-100">{{ selectedPack.tokens }} Minerva tokens</p></div><strong>{{ selectedPack.price }}</strong></div>
               <div class="mt-5 flex items-center justify-between text-sm text-violet-100"><span>Current balance</span><strong class="text-white">{{ tokenBalance }} tokens</strong></div>
               <div class="mt-3 flex items-center justify-between text-sm text-violet-100"><span>New balance</span><strong class="text-white">{{ projectedBalance }} tokens</strong></div>
-              <p class="mt-7 text-xs leading-5 text-violet-200">Demo mode only: no money is charged. The selected tokens will be added locally, then you will return to your dashboard.</p>
+              <p class="mt-7 text-xs leading-5 text-violet-200">Demo mode only: no money is charged. The selected tokens will be added to your backend account, then you will return to your dashboard.</p>
             </aside>
           </section>
         </section>

@@ -187,7 +187,7 @@ function loadMentors(force = false): Promise<void> {
   mentorPromise = (async () => {
     try {
       const result = await apiRequest<{ mentors: unknown[] }>('/api/mentors')
-      const remote = (result.mentors || []).map(normalizeMentor)
+      const remote = (result.mentors || []).map(normalizeMentor).filter((mentor) => mentor.id)
       mentors.value = remote
       remoteMentorsLoaded.value = true
     } catch (error) {
@@ -290,7 +290,7 @@ const normalizeRemoteDocument = (value: unknown): ScholarshipDocument => {
     prompt: String(document.prompt || ''),
     content: String(document.content || document.contentHtml || ''),
     pages: Array.isArray(document.pages) ? document.pages.map((page, index) => { const item = asRecord(page); return { id: String(item.id || ('page-' + (index + 1))), title: String(item.title || ('Page ' + (index + 1))), content: String(item.content || item.contentHtml || '') } }) : [],
-    uploadName: String(upload.originalName || ''),
+    uploadName: String(document.uploadName || upload.originalName || ''),
     status: document.status === 'ready' || document.status === 'draft' ? document.status : 'missing',
     updatedAt: String(document.updatedAt || new Date().toISOString()),
     versions,
@@ -491,6 +491,38 @@ export function useAppState() {
     } catch (error) {
       if (!(error instanceof StaleWorkspaceRequest)) {
         workspaceError.value = error instanceof Error ? error.message : 'Unable to create the document.'
+      }
+      throw error
+    }
+  }
+  const uploadDocument = async (
+    scholarshipId: string,
+    file: File,
+    title: string,
+    kind: DocumentKind = 'custom',
+    details: Partial<Pick<ScholarshipDocument, 'description' | 'category'>> = {},
+  ) => {
+    const generation = workspaceGeneration
+    try {
+      const applicationId = await ensureRemoteApplication(scholarshipId)
+      assertWorkspaceGeneration(generation)
+      const form = new FormData()
+      form.append('file', file, file.name)
+      if (title.trim()) form.append('title', title.trim())
+      form.append('kind', kind)
+      if (details.description) form.append('description', details.description)
+      if (details.category) form.append('category', details.category)
+      const result = await apiRequest<{ document: unknown }>(`/api/applications/${encodeURIComponent(applicationId)}/documents/upload`, {
+        method: 'POST',
+        body: form,
+      })
+      assertWorkspaceGeneration(generation)
+      const document = normalizeRemoteDocument(result.document)
+      ensureDocuments(scholarshipId).push(document)
+      return document
+    } catch (error) {
+      if (!(error instanceof StaleWorkspaceRequest)) {
+        workspaceError.value = error instanceof Error ? error.message : 'Unable to upload the document.'
       }
       throw error
     }
@@ -715,7 +747,7 @@ export function useAppState() {
     scholarships, getScholarship, loadScholarshipCatalog, catalogLoading, catalogError,
     completedIeltsSimulationSets, loadIeltsProgress,
     mentors, loadMentors, mentorCatalogError, bookingId, bookMentor, cancelMentorBooking, hydrateBooking,
-    getChecklist, getProgress, getDocuments, getDocument, addChecklistItem, updateChecklistItem, deleteChecklistItem, addDocument, saveDocument, deleteDocument, createDocumentVersion, restoreDocumentVersion, saveScholarshipNotes, addTokens,
+    getChecklist, getProgress, getDocuments, getDocument, addChecklistItem, updateChecklistItem, deleteChecklistItem, addDocument, uploadDocument, saveDocument, deleteDocument, createDocumentVersion, restoreDocumentVersion, saveScholarshipNotes, addTokens,
   }
 }
 

@@ -15,6 +15,7 @@ export interface IeltsExercise {
   title: string
   instruction: string  // Per-part instructions from backend
   content: string
+  graphUrl: string | null
   audioUrl: string | null
   order: number
   questions: IeltsQuestion[]
@@ -26,14 +27,26 @@ export interface IeltsSubmissionResult {
   section: IeltsSection
   score: number
   totalQuestions: number
+  estimatedBand: number
+  feedback: string
+  review?: Array<{ question: string; yourAnswer: string; correctAnswer: string; explanation: string; isCorrect: boolean }>
 }
 
+export interface IeltsSkillBand {
+  section: 'listening' | 'reading'
+  score: number
+  totalQuestions: number
+  estimatedBand: number
+  feedback: string
+}
 export interface IeltsSubmissionHistoryItem {
   id: string
   exerciseId: string
   section: IeltsSection
   score: number
   totalQuestions: number
+  estimatedBand: number
+  feedback: string
   createdAt: string
 }
 
@@ -78,7 +91,18 @@ export interface IeltsSpeakingEvaluateResponse {
 }
 
 export function mediaUrl(path: string | null | undefined): string | null {
-  return path ? (path.startsWith('http') ? path : `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`) : null
+  if (!path) return null
+  try {
+    const url = new URL(path, API_BASE_URL)
+    if (url.hostname === 'example.com') return null
+    if (url.hostname === 'drive.google.com') {
+      const fileId = url.pathname.match(/\/file\/d\/([^/]+)/)?.[1]
+      if (fileId) return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`
+    }
+    return url.toString()
+  } catch {
+    return null
+  }
 }
 
 export async function getIeltsSet(setNumber: number): Promise<IeltsExercise[]> {
@@ -89,12 +113,12 @@ export async function getIeltsSet(setNumber: number): Promise<IeltsExercise[]> {
 export async function submitIeltsSet(
   setNumber: number,
   exercises: Array<{ exerciseId: string; answers: Array<string | number> }>,
-): Promise<IeltsSubmissionResult[]> {
-  const result = await apiRequest<{ submissions: IeltsSubmissionResult[] }>(
+): Promise<{ submissions: IeltsSubmissionResult[]; skillBands: IeltsSkillBand[] }> {
+  const result = await apiRequest<{ submissions: IeltsSubmissionResult[]; skillBands: IeltsSkillBand[] }>(
     `/api/ielts/sets/${setNumber}/submissions`,
     { method: 'POST', body: { exercises } },
   )
-  return result.submissions
+  return result
 }
 
 export async function getIeltsSubmissions(): Promise<IeltsSubmissionHistoryItem[]> {
@@ -111,4 +135,16 @@ export async function evaluateIeltsWriting(body: IeltsWritingEvaluateRequest): P
 
 export async function evaluateIeltsSpeaking(form: FormData): Promise<IeltsSpeakingEvaluateResponse> {
   return apiRequest<IeltsSpeakingEvaluateResponse>('/api/ielts/speaking/evaluate', { method: 'POST', body: form })
+}
+
+export interface IeltsSpeakingTurnResponse {
+  turnId: string
+  transcript: { text: string; chunks: unknown[]; language?: string }
+  examiner: { text: string; nextQuestion?: string; shouldContinue: boolean }
+  tokenBalance: number
+  voice?: { dataUrl: string; contentType: string }
+}
+
+export async function submitIeltsSpeakingTurn(form: FormData): Promise<IeltsSpeakingTurnResponse> {
+  return apiRequest<IeltsSpeakingTurnResponse>('/api/ielts/speaking/turn', { method: 'POST', body: form })
 }

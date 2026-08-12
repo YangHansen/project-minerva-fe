@@ -36,6 +36,12 @@ const recentReview = computed(() => selectedDocuments.value
 const daysLeft = computed(() => selected.value ? Math.max(0, Math.ceil((new Date(selected.value.deadline).getTime() - Date.now()) / 86400000)) : 0)
 const statusLabel = (status: string) => status === 'done' || status === 'ready' ? 'Completed' : status === 'in_progress' || status === 'draft' ? 'In progress' : 'Pending'
 const statusTone = (status: string) => status === 'done' || status === 'ready' ? 'done' : status === 'in_progress' || status === 'draft' ? 'progress' : 'pending'
+const formatDeadline = (value: string) => {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(undefined, {
+    day: 'numeric', month: 'short', year: 'numeric',
+  }).format(date)
+}
 
 const openFolder = (id: string) => {
   if (selectedId.value !== id) selectScholarship(id)
@@ -68,7 +74,7 @@ onMounted(async () => { await hydrateWorkspace(); if (!folders.value.length) awa
               <div v-for="item in folders" :key="item.id" class="folder-rail-card relative" :class="item.id === selected.id && 'active'">
                 <button class="flex min-w-0 flex-1 items-start gap-3 text-left" @click="openFolder(item.id)">
                   <span class="folder-rail-icon"><FolderOpen :size="21" /></span>
-                  <span class="min-w-0 flex-1"><strong>{{ item.name }}</strong><small>{{ item.provider }} · {{ item.country }}</small><span class="folder-date inline-flex w-fit items-center gap-1 whitespace-nowrap"><CalendarDays :size="14" class="shrink-0" /><time>{{ item.deadline }}</time></span></span>
+                  <span class="min-w-0 flex-1"><strong>{{ item.name }}</strong><small>{{ item.provider }} · {{ item.country }}</small><span class="folder-date inline-flex w-fit items-center gap-1 whitespace-nowrap"><CalendarDays :size="14" class="shrink-0" /><time :datetime="item.deadline">{{ formatDeadline(item.deadline) }}</time></span></span>
                 </button>
                 <button type="button" class="folder-more grid size-8 shrink-0 place-items-center rounded-lg transition hover:bg-red-50 hover:text-red-500" :aria-label="`Remove ${item.name} from My Scholarships`" @click="pendingDeleteId = item.id"><MoreVertical :size="17" /></button>
               </div>
@@ -83,7 +89,7 @@ onMounted(async () => { await hydrateWorkspace(); if (!folders.value.length) awa
                 <p>{{ selected.provider }} · {{ selected.country }}</p>
                 <div class="scholarship-tags"><span><Globe2 :size="13" />{{ selected.country }}</span><span>{{ selected.fundingType }}</span></div>
               </div>
-              <div class="deadline-card"><span>Deadline</span><strong><CalendarDays :size="17" />{{ selected.deadline }}</strong><small>{{ daysLeft }} days left</small></div>
+              <div class="deadline-card"><span>Deadline</span><strong><CalendarDays :size="17" />{{ formatDeadline(selected.deadline) }}</strong><small>{{ daysLeft }} days left</small></div>
             </header>
 
             <div class="active-scholarship-body">
