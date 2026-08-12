@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AlertCircle, AlignLeft, ArrowLeft, ArrowRight, Bold, Check, ChevronDown, Download, Edit3, Eraser, Highlighter, Italic, Link2, List, ListOrdered, LoaderCircle, MessageSquare, Redo2, Sparkles, Strikethrough, Underline, Undo2 } from 'lucide-vue-next'
+import { AlertCircle, AlignLeft, ArrowLeft, ArrowRight, Bold, Check, ChevronDown, Download, Edit3, Eraser, Highlighter, History, Italic, Link2, List, ListOrdered, LoaderCircle, MessageSquare, Plus, Redo2, Sparkles, Strikethrough, Trash2, Underline, Undo2 } from 'lucide-vue-next'
 import type { DocumentReview, DocumentSuggestion } from '../types'
 import { ApiError, apiRequest } from '../api'
 import { chooseRewriteCandidate } from '../lib/documentRewrite'
@@ -9,7 +9,6 @@ import { decideHighlightAction, preferEditorSelection } from '../lib/documentHig
 import { exportAsDocx, exportAsPdf } from '../lib/documentExport'
 import { useAppState } from '../composables/useAppState'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
-import BaseModal from '../components/common/BaseModal.vue'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -64,20 +63,6 @@ const pageTabLabel = (content: string, index: number) => {
 }
 const paperZoom = ref(1)
 const fontFamily = ref('Calibri')
-const editorPanel = ref<'template' | 'ai'>('template')
-const templateSearch = ref('')
-const documentTemplates = [
-  { id: 'scholarship-essay', name: 'Scholarship essay', description: 'Motivation, evidence, and future contribution.', previewTitle: 'My scholarship journey', tone: 'violet', content: '<h2>Why I am applying</h2><p>Explain your motivation and the opportunity you hope to create.</p><h2>Experience and impact</h2><p>Use one clear example with the actions you took and the result.</p><h2>Future contribution</h2><p>Connect your study plan to the community you will support.</p>' },
-  { id: 'personal-statement', name: 'Personal statement', description: 'A clear story about your growth and direction.', previewTitle: 'Purpose & potential', tone: 'blue', content: '<h2>My story</h2><p>Introduce the experience that shaped your direction.</p><h2>What I learned</h2><p>Explain the values and skills you developed.</p><h2>Where I am going</h2><p>Connect your next step to a meaningful long-term goal.</p>' },
-  { id: 'study-plan', name: 'Study plan', description: 'Goals, learning plan, and expected outcomes.', previewTitle: 'Study roadmap', tone: 'emerald', content: '<h2>Academic goal</h2><p>State the knowledge or capability you want to develop.</p><h2>Learning plan</h2><p>Describe the programme, activities, and timeline.</p><h2>Expected outcome</h2><p>Show how you will use the learning after graduation.</p>' },
-    { id: 'cv-profile', name: 'CV profile', description: 'A concise profile, experience, and achievements.', previewTitle: 'Professional profile', tone: 'amber', content: '<h2>Profile</h2><p>Summarise your focus, strengths, and goal in three to four sentences.</p><h2>Selected experience</h2><p>Role - Organisation - Dates</p><ul><li>Describe a measurable contribution or result.</li></ul><h2>Education and achievements</h2><p>Add the most relevant qualifications and recognition.</p>' },
-  { id: 'blank', name: 'Blank page', description: 'Start a clean page from scratch.', previewTitle: 'Untitled document', tone: 'slate', content: '<p>Start writing here.</p>' },
-]
-const filteredDocumentTemplates = computed(() => {
-  const query = templateSearch.value.trim().toLowerCase()
-  return query ? documentTemplates.filter((template) => `${template.name} ${template.description}`.toLowerCase().includes(query)) : documentTemplates
-})
-const pendingTemplate = ref<typeof documentTemplates[number] | null>(null)
 const paperZoomPercent = computed(() => Math.round(paperZoom.value * 100))
 const onPaperWheel = (event: WheelEvent) => {
   if (!event.ctrlKey && !event.metaKey) return
@@ -112,47 +97,287 @@ const addPage = async () => {
   await loadActivePage()
   syncEditor()
 }
-const doApplyTemplate = async (template: typeof documentTemplates[number]) => {
-  const page = activePage.value
-  if (!page) return
-  page.content = template.content
-  await loadActivePage()
-  syncEditor()
-  toast(`${template.name} applied to ${page.title}.`)
-}
-const applyTemplate = async (template: typeof documentTemplates[number]) => {
-  const page = activePage.value
-  if (!page) return
-  const currentText = pagePreview(page.content)
-  if (currentText === 'Blank page') {
-    await doApplyTemplate(template)
-    return
-  }
-  pendingTemplate.value = template
-}
-const confirmApplyTemplate = async () => {
-  if (!pendingTemplate.value) return
-  await doApplyTemplate(pendingTemplate.value)
-  pendingTemplate.value = null
-}
-const cancelApplyTemplate = () => {
-  pendingTemplate.value = null
-}
 const autosaveState = ref('All changes saved')
 const selectedVersion = ref('current')
 const expandedSuggestion = ref<string | null>(null)
 const previewSuggestion = ref<string | null>(null)
 const aiPrompt = ref('')
+const aiPanel = ref<'consultation' | 'proofreader'>('consultation')
 const expandedReviewSummary = ref(false)
 const reviewLoading = ref(false)
+const aiBusyKind = ref<'review' | 'refine' | 'consult' | ''>('')
 const reviewError = ref('')
 const versionSaving = ref(false)
 const suggestionSaving = ref('')
 const exportMenuOpen = ref(false)
 const exporting = ref<'docx' | 'pdf' | ''>('')
+type ConsultMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  text: string
+  intent?: 'advise' | 'refine'
+  refineInstruction?: string
+  applied?: number
+  skipped?: number
+}
+type ConsultSession = {
+  id: string
+  title: string
+  updatedAt: string
+  messages: ConsultMessage[]
+  pendingRefineInstruction: string
+}
+
+const consultMessages = ref<ConsultMessage[]>([])
+const pendingRefineInstruction = ref('')
+const consultSessions = ref<ConsultSession[]>([])
+const activeConsultId = ref('')
+const consultHistoryOpen = ref(false)
 let rewriteMarkerSequence = 0
 let savedEditorRange: Range | null = null
 let saveTimer = 0
+let consultMessageId = 0
+let consultSessionSequence = 0
+
+const consultStorageKey = (documentId: string) => `minerva-consult:${documentId}`
+
+const pendingFromHistory = (messages: ConsultMessage[]) => {
+  const last = [...messages].reverse().find((entry) => entry.role === 'assistant' && entry.refineInstruction)
+  if (!last || last.applied != null || last.intent === 'refine') return ''
+  return last.refineInstruction || ''
+}
+
+const parseConsultMessage = (item: unknown, index: number): ConsultMessage | null => {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+  const entry = item as Record<string, unknown>
+  const role = entry.role === 'assistant' ? 'assistant' as const : entry.role === 'user' ? 'user' as const : null
+  const text = entry.text == null ? '' : String(entry.text).trim()
+  if (!role || !text) return null
+  return {
+    id: entry.id == null ? `consult-restored-${index + 1}` : String(entry.id),
+    role,
+    text,
+    intent: entry.intent === 'refine' ? 'refine' as const : entry.intent === 'advise' ? 'advise' as const : undefined,
+    refineInstruction: entry.refineInstruction == null ? undefined : String(entry.refineInstruction),
+    applied: typeof entry.applied === 'number' ? entry.applied : undefined,
+    skipped: typeof entry.skipped === 'number' ? entry.skipped : undefined,
+  }
+}
+
+const sessionTitleFromMessages = (messages: ConsultMessage[]) => {
+  const firstUser = messages.find((entry) => entry.role === 'user')
+  return (firstUser?.text || 'New consultation').replace(/\s+/g, ' ').trim().slice(0, 56)
+}
+
+const syncMessageCounter = (messages: ConsultMessage[]) => {
+  const maxId = messages.reduce((max, entry) => {
+    const match = /^consult-(\d+)$/.exec(entry.id)
+    return match ? Math.max(max, Number(match[1])) : max
+  }, 0)
+  consultMessageId = Math.max(consultMessageId, maxId)
+}
+
+const createEmptyConsultSession = (): ConsultSession => {
+  consultSessionSequence += 1
+  return {
+    id: `session-${Date.now()}-${consultSessionSequence}`,
+    title: 'New consultation',
+    updatedAt: new Date().toISOString(),
+    messages: [],
+    pendingRefineInstruction: '',
+  }
+}
+
+const loadConsultStore = (documentId: string) => {
+  try {
+    const raw = localStorage.getItem(consultStorageKey(documentId))
+    if (!raw) {
+      const session = createEmptyConsultSession()
+      consultSessions.value = [session]
+      activeConsultId.value = session.id
+      consultMessages.value = []
+      pendingRefineInstruction.value = ''
+      return
+    }
+    const parsed = JSON.parse(raw) as unknown
+    if (Array.isArray(parsed)) {
+      const messages = parsed
+        .map((item, index) => parseConsultMessage(item, index))
+        .filter((entry): entry is ConsultMessage => Boolean(entry))
+        .slice(-60)
+      const session = {
+        ...createEmptyConsultSession(),
+        title: sessionTitleFromMessages(messages) || 'Consultation',
+        messages,
+        pendingRefineInstruction: pendingFromHistory(messages),
+      }
+      consultSessions.value = [session]
+      activeConsultId.value = session.id
+      consultMessages.value = messages
+      pendingRefineInstruction.value = session.pendingRefineInstruction
+      syncMessageCounter(messages)
+      return
+    }
+    if (!parsed || typeof parsed !== 'object') throw new Error('invalid consult store')
+    const root = parsed as Record<string, unknown>
+    const sessionsRaw = Array.isArray(root.sessions) ? root.sessions : []
+    const sessions = sessionsRaw
+      .map((item, index) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+        const entry = item as Record<string, unknown>
+        const messages = (Array.isArray(entry.messages) ? entry.messages : [])
+          .map((message, messageIndex) => parseConsultMessage(message, messageIndex))
+          .filter((message): message is ConsultMessage => Boolean(message))
+          .slice(-60)
+        const id = entry.id == null ? `session-restored-${index + 1}` : String(entry.id)
+        return {
+          id,
+          title: entry.title == null ? sessionTitleFromMessages(messages) || 'Consultation' : String(entry.title),
+          updatedAt: entry.updatedAt == null ? new Date().toISOString() : String(entry.updatedAt),
+          messages,
+          pendingRefineInstruction: entry.pendingRefineInstruction == null
+            ? pendingFromHistory(messages)
+            : String(entry.pendingRefineInstruction),
+        } satisfies ConsultSession
+      })
+      .filter((entry): entry is ConsultSession => Boolean(entry))
+      .slice(0, 20)
+
+    if (!sessions.length) {
+      const session = createEmptyConsultSession()
+      consultSessions.value = [session]
+      activeConsultId.value = session.id
+      consultMessages.value = []
+      pendingRefineInstruction.value = ''
+      return
+    }
+
+    const requestedId = root.activeId == null ? '' : String(root.activeId)
+    const active = sessions.find((session) => session.id === requestedId) || sessions[0]
+    consultSessions.value = sessions
+    activeConsultId.value = active.id
+    consultMessages.value = active.messages
+    pendingRefineInstruction.value = active.pendingRefineInstruction
+    syncMessageCounter(sessions.flatMap((session) => session.messages))
+  } catch {
+    const session = createEmptyConsultSession()
+    consultSessions.value = [session]
+    activeConsultId.value = session.id
+    consultMessages.value = []
+    pendingRefineInstruction.value = ''
+  }
+}
+
+const persistConsultHistory = () => {
+  const documentId = documentRecord.value?.id
+  if (!documentId || !activeConsultId.value) return
+  const currentIndex = consultSessions.value.findIndex((session) => session.id === activeConsultId.value)
+  if (currentIndex < 0) return
+  const current = consultSessions.value[currentIndex]
+  const nextCurrent: ConsultSession = {
+    ...current,
+    title: consultMessages.value.length ? sessionTitleFromMessages(consultMessages.value) : current.title || 'New consultation',
+    updatedAt: new Date().toISOString(),
+    messages: consultMessages.value.slice(-60),
+    pendingRefineInstruction: pendingRefineInstruction.value,
+  }
+  const sessions = [...consultSessions.value]
+  sessions[currentIndex] = nextCurrent
+  consultSessions.value = sessions
+  try {
+    localStorage.setItem(consultStorageKey(documentId), JSON.stringify({
+      activeId: activeConsultId.value,
+      sessions: sessions.slice(0, 20),
+    }))
+  } catch {
+    // Ignore quota / private-mode failures.
+  }
+}
+
+const openConsultSession = (sessionId: string) => {
+  if (reviewLoading.value || sessionId === activeConsultId.value) {
+    consultHistoryOpen.value = false
+    return
+  }
+  persistConsultHistory()
+  const session = consultSessions.value.find((entry) => entry.id === sessionId)
+  if (!session) return
+  activeConsultId.value = session.id
+  consultMessages.value = [...session.messages]
+  pendingRefineInstruction.value = session.pendingRefineInstruction
+  reviewError.value = ''
+  consultHistoryOpen.value = false
+  syncMessageCounter(session.messages)
+}
+
+const startNewConsult = () => {
+  if (reviewLoading.value) return
+  persistConsultHistory()
+  const current = consultSessions.value.find((session) => session.id === activeConsultId.value)
+  if (current && !current.messages.length && !consultMessages.value.length) {
+    consultHistoryOpen.value = false
+    toast('Already in a new consultation.', 'info')
+    return
+  }
+  const session = createEmptyConsultSession()
+  consultSessions.value = [session, ...consultSessions.value].slice(0, 20)
+  activeConsultId.value = session.id
+  consultMessages.value = []
+  pendingRefineInstruction.value = ''
+  reviewError.value = ''
+  consultHistoryOpen.value = false
+  persistConsultHistory()
+  toast('Started a new consultation.', 'info')
+}
+
+const deleteConsultSession = (sessionId: string) => {
+  if (reviewLoading.value) return
+  const remaining = consultSessions.value.filter((session) => session.id !== sessionId)
+  if (!remaining.length) {
+    const session = createEmptyConsultSession()
+    consultSessions.value = [session]
+    activeConsultId.value = session.id
+    consultMessages.value = []
+    pendingRefineInstruction.value = ''
+    reviewError.value = ''
+    consultHistoryOpen.value = false
+    persistConsultHistory()
+    toast('Consultation history deleted.', 'info')
+    return
+  }
+  consultSessions.value = remaining
+  if (activeConsultId.value === sessionId) {
+    const next = remaining[0]
+    activeConsultId.value = next.id
+    consultMessages.value = [...next.messages]
+    pendingRefineInstruction.value = next.pendingRefineInstruction
+    reviewError.value = ''
+  }
+  persistConsultHistory()
+  toast('Consultation deleted.', 'info')
+}
+
+const toggleConsultHistory = () => {
+  if (reviewLoading.value) return
+  persistConsultHistory()
+  consultHistoryOpen.value = !consultHistoryOpen.value
+}
+
+watch(() => documentRecord.value?.id, (documentId) => {
+  consultHistoryOpen.value = false
+  if (!documentId) {
+    consultSessions.value = []
+    activeConsultId.value = ''
+    consultMessages.value = []
+    pendingRefineInstruction.value = ''
+    return
+  }
+  loadConsultStore(documentId)
+}, { immediate: true })
+
+watch([consultMessages, pendingRefineInstruction], () => {
+  persistConsultHistory()
+}, { deep: true })
 
 const plainText = computed(() => documentRecord.value?.content.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim() || '')
 const wordCount = computed(() => plainText.value ? plainText.value.split(/\s+/).length : 0)
@@ -278,7 +503,7 @@ const reviewMessage = (caught: unknown) => {
   }
   return caught instanceof Error && caught.message
     ? caught.message
-    : 'The AI review could not be completed. Please try again.'
+    : 'The AI request could not be completed. Please try again.'
 }
 
 const runReview = async (focus = '') => {
@@ -290,8 +515,13 @@ const runReview = async (focus = '') => {
   }
 
   syncEditor()
-  const sourceContent = doc.content
+  const sourceContent = doc.pages?.length
+    ? doc.pages.map((page) => page.content).join('<p><br></p>')
+    : doc.content
+  doc.content = sourceContent
   reviewLoading.value = true
+  aiBusyKind.value = 'review'
+  aiPanel.value = 'proofreader'
   reviewError.value = ''
   previewSuggestion.value = null
 
@@ -328,6 +558,7 @@ const runReview = async (focus = '') => {
     }
   } finally {
     reviewLoading.value = false
+    aiBusyKind.value = ''
   }
 }
 
@@ -502,8 +733,8 @@ const textMatchesInRoot = (root: HTMLElement, originalText: string) => {
       combined
       && previousBlock
       && previousBlock !== currentBlock
-      && !/s$/.test(combined)
-      && !/^s/.test(node.data)
+      && !/\s$/.test(combined)
+      && !/^\s/.test(node.data)
     ) combined += ' '
     const start = combined.length
     combined += node.data
@@ -752,7 +983,224 @@ const dismissSuggestion = async (suggestion: DocumentSuggestion) => {
     suggestionSaving.value = ''
   }
 }
-const askAi = () => { if (aiPrompt.value.trim()) void runReview(aiPrompt.value) }
+const askAi = () => {
+  if (!aiPrompt.value.trim()) return
+  void runConsult(aiPrompt.value.trim())
+}
+
+const runConsult = async (message: string) => {
+  const doc = documentRecord.value
+  if (!doc || reviewLoading.value) return
+  if (wordCount.value < 5) {
+    reviewError.value = 'Add a little more content before asking the AI.'
+    return
+  }
+
+  syncEditor()
+  const sourceContent = doc.pages?.length
+    ? doc.pages.map((page) => page.content).join('<p><br></p>')
+    : doc.content
+  doc.content = sourceContent
+  const userText = message.trim()
+  reviewLoading.value = true
+  aiBusyKind.value = 'consult'
+  aiPanel.value = 'consultation'
+  reviewError.value = ''
+  consultMessages.value = [
+    ...consultMessages.value,
+    { id: `consult-${++consultMessageId}`, role: 'user', text: userText },
+  ]
+  aiPrompt.value = ''
+
+  try {
+    const history = consultMessages.value
+      .slice(0, -1)
+      .slice(-20)
+      .map((entry) => ({ role: entry.role, content: entry.text }))
+    const payload = await apiRequest<unknown>(`/api/documents/${encodeURIComponent(doc.id)}/consult`, {
+      method: 'POST',
+      body: {
+        content: sourceContent,
+        title: doc.title,
+        message: userText,
+        prompt: doc.prompt,
+        history,
+        ...(selectedId.value ? { scholarshipId: selectedId.value } : {}),
+      },
+    })
+    syncAiTokenBalance(payload)
+    const root = asRecord(payload)
+    const consult = asRecord(root?.consult)
+    const reply = textValue(consult?.reply) || 'I can help improve this draft. What would you like to focus on?'
+    const intent = consult?.intent === 'refine' ? 'refine' as const : 'advise' as const
+    const refineInstruction = textValue(consult?.refineInstruction) || userText
+    consultMessages.value = [
+      ...consultMessages.value,
+      {
+        id: `consult-${++consultMessageId}`,
+        role: 'assistant',
+        text: reply,
+        intent,
+        refineInstruction,
+      },
+    ]
+
+    if (intent === 'refine') {
+      pendingRefineInstruction.value = ''
+      await runRefine(refineInstruction, { fromConsult: true })
+    } else {
+      pendingRefineInstruction.value = refineInstruction
+    }
+  } catch (caught) {
+    syncAiTokenBalance(caught)
+    reviewError.value = reviewMessage(caught)
+  } finally {
+    if (aiBusyKind.value === 'consult') {
+      reviewLoading.value = false
+      aiBusyKind.value = ''
+    }
+  }
+}
+
+const runRefine = async (
+  instruction: string,
+  options: { fromConsult?: boolean } = {},
+) => {
+  const doc = documentRecord.value
+  if (!doc || (reviewLoading.value && aiBusyKind.value !== 'consult')) return
+  if (wordCount.value < 5) {
+    reviewError.value = 'Add a little more content before asking the AI.'
+    return
+  }
+
+  syncEditor()
+  const sourceContent = doc.pages?.length
+    ? doc.pages.map((page) => page.content).join('<p><br></p>')
+    : doc.content
+  doc.content = sourceContent
+  reviewLoading.value = true
+  aiBusyKind.value = 'refine'
+  aiPanel.value = 'consultation'
+  reviewError.value = ''
+
+  try {
+    try {
+      await createDocumentVersion(doc, 'Before AI refine', 'review')
+    } catch {
+      // Versioning is helpful but must not block the real LLM refine call.
+    }
+
+    const payload = await apiRequest<unknown>(`/api/documents/${encodeURIComponent(doc.id)}/refine`, {
+      method: 'POST',
+      body: {
+        content: sourceContent,
+        title: doc.title,
+        instruction,
+        prompt: doc.prompt,
+        ...(selectedId.value ? { scholarshipId: selectedId.value } : {}),
+      },
+    })
+    syncAiTokenBalance(payload)
+    const root = asRecord(payload)
+    const refine = asRecord(root?.refine)
+    const summary = textValue(refine?.summary) || 'Applied refine changes to your draft.'
+    const changes = (Array.isArray(refine?.changes) ? refine.changes : [])
+      .map((value) => {
+        const change = asRecord(value)
+        if (!change) return null
+        const originalText = textValue(change.originalText)
+        const replacement = textValue(change.replacement)
+        if (!originalText || !replacement || originalText === replacement) return null
+        return {
+          originalText,
+          replacement,
+          reason: textValue(change.reason),
+        }
+      })
+      .filter((change): change is { originalText: string; replacement: string; reason: string } => Boolean(change))
+
+    const plain = canonicalReviewText(sourceContent)
+    const ordered = [...changes].sort((left, right) => {
+      const leftIndex = plain.indexOf(left.originalText)
+      const rightIndex = plain.indexOf(right.originalText)
+      if (leftIndex >= 0 && rightIndex >= 0 && leftIndex !== rightIndex) return rightIndex - leftIndex
+      return right.originalText.length - left.originalText.length
+    })
+
+    let applied = 0
+    let skipped = 0
+    for (const change of ordered) {
+      if (await applyRewriteAcrossPages(change.originalText, change.replacement)) applied += 1
+      else skipped += 1
+    }
+
+    syncEditor()
+    await loadActivePage()
+    window.clearTimeout(saveTimer)
+    await saveDocument(doc)
+    if (doc.review) doc.review.sourceFingerprint = `stale:${fingerprint(doc.content)}`
+
+    const refineNote = options.fromConsult
+      ? `${summary}${applied ? ` I applied ${applied} change${applied === 1 ? '' : 's'} to your draft.` : ''}`
+      : summary
+    const last = consultMessages.value[consultMessages.value.length - 1]
+    if (options.fromConsult && last?.role === 'assistant' && last.intent === 'refine') {
+      last.text = refineNote
+      last.applied = applied
+      last.skipped = skipped
+      last.refineInstruction = instruction
+      consultMessages.value = [...consultMessages.value]
+    } else {
+      consultMessages.value = [
+        ...consultMessages.value,
+        {
+          id: `consult-${++consultMessageId}`,
+          role: 'assistant',
+          text: refineNote,
+          intent: 'refine',
+          refineInstruction: instruction,
+          applied,
+          skipped,
+        },
+      ]
+    }
+    pendingRefineInstruction.value = ''
+
+    if (!applied) {
+      reviewError.value = skipped
+        ? 'The AI returned passages that could not be matched in the editor. Try a narrower request.'
+        : 'The AI returned no usable changes.'
+      return
+    }
+    toast(skipped ? `Applied ${applied} change${applied === 1 ? '' : 's'} (${skipped} skipped).` : `Applied ${applied} change${applied === 1 ? '' : 's'}.`)
+  } catch (caught) {
+    syncAiTokenBalance(caught)
+    reviewError.value = reviewMessage(caught)
+  } finally {
+    reviewLoading.value = false
+    aiBusyKind.value = ''
+  }
+}
+
+const applyPendingRefine = () => {
+  if (reviewLoading.value) return
+  const instruction = pendingRefineInstruction.value.trim()
+    || [...consultMessages.value].reverse().find((entry) => entry.role === 'assistant' && entry.refineInstruction)?.refineInstruction
+    || ''
+  if (!instruction) {
+    reviewError.value = 'Ask for advice first, then apply the suggested refine to your draft.'
+    return
+  }
+  consultMessages.value = [
+    ...consultMessages.value,
+    {
+      id: `consult-${++consultMessageId}`,
+      role: 'user',
+      text: 'Please apply these improvements to my draft.',
+    },
+  ]
+  void runRefine(instruction, { fromConsult: true })
+}
 
 onMounted(async () => {
   if (!documentRecord.value) await hydrateWorkspace()
@@ -809,39 +1257,172 @@ onBeforeUnmount(() => {
         </section>
 
         <aside class="review-assistant editor-left-panel">
-          <div class="editor-panel-tabs"><button type="button" :class="editorPanel === 'template' ? '!bg-[#5b45f5] !text-white shadow-sm' : '!text-slate-600 hover:!bg-[#5b45f5] hover:!text-white'" @click="editorPanel = 'template'">Template</button><button type="button" :class="editorPanel === 'ai' ? '!bg-[#5b45f5] !text-white shadow-sm' : '!text-slate-600 hover:!bg-[#5b45f5] hover:!text-white'" @click="editorPanel = 'ai'">AI consultation</button></div>
-          <section v-if="editorPanel === 'template'" class="template-panel"><div class="template-heading"><span class="workspace-kicker">Writing starter</span><h2>Choose a template</h2><p>Preview a structure, then apply it to the selected page.</p></div><label class="template-search"><span>Search templates</span><input v-model="templateSearch" type="search" placeholder="Essay, study plan, CV..." /></label><div class="template-grid"><button v-for="template in filteredDocumentTemplates" :key="template.id" type="button" class="template-card" @click="applyTemplate(template)"><span :class="['template-preview', `tone-${template.tone}`]"><em>{{ template.previewTitle }}</em><i class="wide" /><i /><i /><i class="short" /></span><span class="template-card-copy"><strong>{{ template.name }}</strong><small>{{ template.description }}</small></span></button><p v-if="!filteredDocumentTemplates.length" class="template-empty">No matching templates.</p></div><button type="button" class="btn-secondary template-add-page" @click="addPage">+ Add blank page</button></section>
-          <BaseModal :open="Boolean(pendingTemplate)" title="Replace page content?" @close="cancelApplyTemplate">
-            <p class="mb-6 text-sm leading-6 text-slate-600">Replace the content of <strong>{{ activePage?.title }}</strong> with the <strong>{{ pendingTemplate?.name }}</strong> template? This will overwrite the current page content.</p>
-            <div class="flex items-center justify-end gap-3">
-              <button type="button" class="btn-secondary" @click="cancelApplyTemplate">Cancel</button>
-              <button type="button" class="btn-primary" @click="confirmApplyTemplate">Replace content</button>
-            </div>
-          </BaseModal>
-          <div v-show="editorPanel === 'ai'" class="ai-consultation-panel">
-          <div class="review-title"><span><Sparkles :size="18" />AI consultation</span><button type="button" class="btn-primary !px-3 !py-2 text-xs" :disabled="reviewLoading" @click="runReview()"><LoaderCircle v-if="reviewLoading" class="animate-spin" :size="15" /><Sparkles v-else :size="15" />{{ reviewLoading ? 'Reviewing...' : 'Review draft' }}</button></div>
-          <div class='ai-review-scroll'>
-
-          <div v-if="reviewError" class="mt-3 flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 p-3 text-xs leading-5 text-red-700" role="alert"><AlertCircle class="mt-0.5 shrink-0" :size="15" /><span>{{ reviewError }}</span></div>
-          <div v-if="reviewOutdated" class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">Your draft changed after this review. Rewrites can still be applied when the exact source passage remains on the selected page.</div>
-          <section v-if="reviewLoading && !documentRecord.review" class="review-score-card grid min-h-48 place-content-center text-center"><LoaderCircle class="mx-auto animate-spin text-[#5b45f5]" :size="30" /><strong class="mt-3 text-sm text-[#17136b]">Minerva is reviewing your draft</strong><p class="mt-1 text-xs text-slate-500">Checking clarity, structure, grammar, and impact...</p></section>
-          <section v-else-if="documentRecord.review" class="review-score-card">
-            <div class="overall-row"><div class="score-ring" :style="{ '--score': `${documentRecord.review.overall * 3.6}deg` }"><span>{{ documentRecord.review.overall }}</span></div><div><h2>{{ documentRecord.review.overall >= 82 ? 'Strong draft' : 'Promising draft' }}</h2><span class="review-score-label">Overall review score</span></div></div><p class="review-summary" :class="!expandedReviewSummary && 'clamped'">{{ documentRecord.review.summary }}</p><button v-if="documentRecord.review.summary.length > 220" type="button" class="review-summary-toggle" @click="expandedReviewSummary = !expandedReviewSummary">{{ expandedReviewSummary ? 'Show less' : 'Show more' }}</button>
-            <div class="review-metrics"><div><span>Clarity</span><strong>{{ documentRecord.review.clarity }}</strong></div><div><span>Grammar</span><strong>{{ documentRecord.review.grammar }}</strong></div><div><span>Structure</span><strong>{{ documentRecord.review.structure }}</strong></div><div><span>Impact</span><strong>{{ documentRecord.review.impact }}</strong></div></div>
-            <div v-if="documentRecord.review.strengths?.length" class="mt-4 rounded-xl bg-emerald-50 p-3"><strong class="text-xs text-emerald-800">What already works</strong><ul class="mt-2 space-y-1 text-xs leading-5 text-emerald-700"><li v-for="strength in documentRecord.review.strengths.slice(0, 3)" :key="strength">{{ strength }}</li></ul></div>
-            <h3 class="suggestions-title">Top suggestions <span>{{ documentRecord.review.suggestions.filter((item) => !item.dismissed && !item.accepted).length }}</span></h3>
-            <div class="review-suggestions">
-              <article v-for="suggestion in documentRecord.review.suggestions.filter((item) => !item.dismissed && !item.accepted)" :key="suggestion.id" :class="['review-suggestion', suggestion.tone, expandedSuggestion === suggestion.id && 'expanded']">
-                <button class="suggestion-heading" @click="expandedSuggestion = expandedSuggestion === suggestion.id ? null : suggestion.id"><span>{{ suggestion.title }}</span><ChevronDown :size="16" /></button>
-                <div v-if="expandedSuggestion === suggestion.id"><p>{{ suggestion.detail }}</p><button v-if="suggestion.replacement" class="rewrite-button" :disabled="Boolean(suggestionSaving)" @click="acceptSuggestion(suggestion)">{{ suggestionSaving === suggestion.id ? 'Applying...' : 'Apply rewrite' }}</button><button v-if="suggestion.replacement" :disabled="Boolean(suggestionSaving)" @click="previewSuggestion = previewSuggestion === suggestion.id ? null : suggestion.id">{{ previewSuggestion === suggestion.id ? 'Hide preview' : 'Preview' }}</button><button :disabled="Boolean(suggestionSaving)" @click="dismissSuggestion(suggestion)">Dismiss</button></div>
-                <div v-if="previewSuggestion === suggestion.id" class="rewrite-preview"><span>Suggested rewrite</span><p>{{ suggestion.replacement }}</p></div>
-              </article>
-              <p v-if="!documentRecord.review.suggestions.some((item) => !item.dismissed && !item.accepted)" class="rounded-xl bg-emerald-50 p-4 text-center text-xs text-emerald-700">You have worked through every suggestion in this review.</p>
-            </div>
-          </section>
-          <section v-else class="review-score-card text-center"><span class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-violet-100 text-[#5b45f5]"><Sparkles :size="22" /></span><h2 class="mt-3 text-sm font-bold text-[#17136b]">Get focused feedback</h2><p class="mt-2 text-xs leading-5 text-slate-500">Reviews run only when you request them, so editing never triggers an AI charge.</p><button type="button" class="btn-primary mt-4" @click="runReview()">Review this draft</button></section>
+          <div class="editor-panel-tabs">
+            <button type="button" :class="aiPanel === 'consultation' ? '!bg-[#5b45f5] !text-white shadow-sm' : '!text-slate-600 hover:!bg-[#5b45f5] hover:!text-white'" @click="aiPanel = 'consultation'">AI Consultation</button>
+            <button type="button" :class="aiPanel === 'proofreader' ? '!bg-[#5b45f5] !text-white shadow-sm' : '!text-slate-600 hover:!bg-[#5b45f5] hover:!text-white'" @click="aiPanel = 'proofreader'">AI Proofreader</button>
           </div>
-          <section class="ask-ai-card"><form @submit.prevent="askAi"><input v-model="aiPrompt" placeholder="Ask AI to focus on something..." :disabled="reviewLoading" /><button :disabled="reviewLoading || !aiPrompt.trim()" aria-label="Send focused review request"><LoaderCircle v-if="reviewLoading" class="animate-spin" :size="17" /><ArrowRight v-else :size="17" /></button></form><div><button :disabled="reviewLoading" @click="runReview('Improve clarity without changing my voice.')">Improve clarity</button><button :disabled="reviewLoading" @click="runReview('Make the evidence and measurable impact stronger.')">Stronger impact</button><button :disabled="reviewLoading" @click="runReview('Make the draft more concise and remove repetition.')">Shorten</button></div></section>
+
+          <div v-show="aiPanel === 'consultation'" class="ai-consultation-panel">
+            <div class="ai-review-scroll">
+              <div class="relative mt-1 flex items-center justify-between gap-2">
+                <h3 class="text-xs font-black uppercase tracking-wide text-slate-400">Conversation</h3>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    class="consult-icon-btn"
+                    :disabled="reviewLoading"
+                    title="Chat history"
+                    aria-label="Open chat history"
+                    :aria-expanded="consultHistoryOpen"
+                    @click="toggleConsultHistory"
+                  >
+                    <History :size="15" stroke-width="2.25" />
+                  </button>
+                  <button
+                    type="button"
+                    class="consult-icon-btn"
+                    :disabled="reviewLoading"
+                    title="New chat"
+                    aria-label="Start a new chat"
+                    @click="startNewConsult"
+                  >
+                    <Plus :size="16" stroke-width="2.25" />
+                  </button>
+                </div>
+                <div v-if="consultHistoryOpen" class="consult-history-popover" role="dialog" aria-label="Consultation history">
+                  <div class="mb-2 flex items-center justify-between gap-2">
+                    <strong class="text-xs font-black uppercase tracking-wide text-slate-400">History</strong>
+                    <button type="button" class="text-[11px] font-bold text-slate-400 hover:text-slate-600" @click="consultHistoryOpen = false">Close</button>
+                  </div>
+                  <p v-if="!consultSessions.some((session) => session.messages.length)" class="rounded-lg bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">No saved consultations yet.</p>
+                  <ul v-else class="max-h-56 space-y-1 overflow-y-auto">
+                    <li v-for="session in consultSessions.filter((entry) => entry.messages.length || entry.id === activeConsultId)" :key="session.id">
+                      <div
+                        class="group flex items-start gap-2 rounded-xl px-2.5 py-2"
+                        :class="session.id === activeConsultId ? 'bg-violet-50' : 'hover:bg-slate-50'"
+                      >
+                        <button type="button" class="min-w-0 flex-1 text-left" @click="openConsultSession(session.id)">
+                          <strong class="block truncate text-xs font-bold text-[#17136b]">{{ session.title || 'Consultation' }}</strong>
+                          <small class="mt-0.5 block text-[11px] text-slate-400">{{ new Date(session.updatedAt).toLocaleString() }} · {{ session.messages.length }} messages</small>
+                        </button>
+                        <button
+                          type="button"
+                          class="mt-0.5 rounded-md p-1 text-slate-400 opacity-70 hover:bg-white hover:text-red-500"
+                          title="Delete consultation"
+                          aria-label="Delete consultation"
+                          @click.stop="deleteConsultSession(session.id)"
+                        >
+                          <Trash2 :size="13" />
+                        </button>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+              <div v-if="reviewError && aiBusyKind !== 'review'" class="mt-3 flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 p-3 text-xs leading-5 text-red-700" role="alert"><AlertCircle class="mt-0.5 shrink-0" :size="15" /><span>{{ reviewError }}</span></div>
+              <section v-if="aiBusyKind === 'consult'" class="mt-3 rounded-xl border border-violet-100 bg-violet-50 p-3 text-center"><LoaderCircle class="mx-auto animate-spin text-[#5b45f5]" :size="22" /><p class="mt-2 text-xs font-bold text-[#3127b8]">Minerva is thinking...</p></section>
+              <section v-else-if="aiBusyKind === 'refine'" class="mt-3 rounded-xl border border-violet-100 bg-violet-50 p-3 text-center"><LoaderCircle class="mx-auto animate-spin text-[#5b45f5]" :size="22" /><p class="mt-2 text-xs font-bold text-[#3127b8]">Applying refinements to your draft...</p></section>
+
+              <section v-if="consultMessages.length" class="mt-4 space-y-2">
+                <article v-for="entry in consultMessages" :key="entry.id" class="rounded-xl p-3" :class="entry.role === 'user' ? 'bg-violet-50' : 'bg-slate-50'">
+                  <strong class="text-xs" :class="entry.role === 'user' ? 'text-[#3127b8]' : 'text-[#17136b]'">{{ entry.role === 'user' ? 'You' : 'AI' }}</strong>
+                  <p class="mt-1 text-xs leading-5 text-slate-600">{{ entry.text }}</p>
+                  <small v-if="entry.applied != null" class="mt-2 block text-[11px] font-bold text-slate-400">Applied {{ entry.applied }}{{ entry.skipped ? ` · skipped ${entry.skipped}` : '' }}</small>
+                </article>
+              </section>
+              <section v-else-if="aiBusyKind !== 'consult' && aiBusyKind !== 'refine'" class="review-score-card mt-3 text-center">
+                <span class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-violet-100 text-[#5b45f5]"><Sparkles :size="22" /></span>
+                <h2 class="mt-3 text-sm font-bold text-[#17136b]">Talk through your draft</h2>
+                <p class="mt-2 text-xs leading-5 text-slate-500">Ask for advice first. Use history to reopen past chats, or plus to start a new one.</p>
+              </section>
+            </div>
+            <section class="ask-ai-card">
+              <button
+                v-if="pendingRefineInstruction"
+                type="button"
+                class="btn-primary mb-3 !w-full !px-3 !py-2 text-xs"
+                :disabled="reviewLoading"
+                @click="applyPendingRefine"
+              >
+                <Sparkles :size="15" />Apply to draft
+              </button>
+              <form @submit.prevent="askAi">
+                <input v-model="aiPrompt" placeholder="Ask about your draft..." :disabled="reviewLoading" />
+                <button :disabled="reviewLoading || !aiPrompt.trim()" aria-label="Send consultation message">
+                  <LoaderCircle v-if="aiBusyKind === 'consult' || aiBusyKind === 'refine'" class="animate-spin" :size="17" /><ArrowRight v-else :size="17" />
+                </button>
+              </form>
+              <div>
+                <button :disabled="reviewLoading" @click="runConsult('How can I improve clarity without changing my voice?')">Improve clarity</button>
+                <button :disabled="reviewLoading" @click="runConsult('How can I make the evidence and measurable impact stronger?')">Stronger impact</button>
+                <button :disabled="reviewLoading" @click="runConsult('How can I make this draft more concise?')">Shorten</button>
+              </div>
+            </section>
+          </div>
+
+          <div v-show="aiPanel === 'proofreader'" class="ai-consultation-panel">
+            <div class="ai-review-scroll">
+              <div v-if="reviewError && aiBusyKind !== 'refine'" class="mt-3 flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 p-3 text-xs leading-5 text-red-700" role="alert"><AlertCircle class="mt-0.5 shrink-0" :size="15" /><span>{{ reviewError }}</span></div>
+              <div v-if="reviewOutdated" class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">Your draft changed after this review. Rewrites can still be applied when the exact source passage remains on the selected page.</div>
+
+              <section v-if="aiBusyKind === 'review' && !documentRecord.review" class="review-score-card grid min-h-48 place-content-center text-center">
+                <LoaderCircle class="mx-auto animate-spin text-[#5b45f5]" :size="30" />
+                <strong class="mt-3 text-sm text-[#17136b]">Minerva is reviewing your draft</strong>
+                <p class="mt-1 text-xs text-slate-500">Checking clarity, structure, grammar, and impact...</p>
+              </section>
+              <section v-else-if="documentRecord.review" class="review-score-card">
+                <div class="mb-4">
+                  <button type="button" class="btn-primary !w-full !px-3 !py-2 text-xs" :disabled="reviewLoading" @click="runReview()">
+                    <LoaderCircle v-if="aiBusyKind === 'review'" class="animate-spin" :size="15" /><Sparkles v-else :size="15" />
+                    {{ aiBusyKind === 'review' ? 'Reviewing...' : 'Review draft' }}
+                  </button>
+                </div>
+                <div class="overall-row">
+                  <div class="score-ring" :style="{ '--score': `${documentRecord.review.overall * 3.6}deg` }"><span>{{ documentRecord.review.overall }}</span></div>
+                  <div>
+                    <h2>{{ documentRecord.review.overall >= 82 ? 'Strong draft' : 'Promising draft' }}</h2>
+                    <span class="review-score-label">Overall review score</span>
+                  </div>
+                </div>
+                <p class="review-summary" :class="!expandedReviewSummary && 'clamped'">{{ documentRecord.review.summary }}</p>
+                <button v-if="documentRecord.review.summary.length > 220" type="button" class="review-summary-toggle" @click="expandedReviewSummary = !expandedReviewSummary">{{ expandedReviewSummary ? 'Show less' : 'Show more' }}</button>
+                <div class="review-metrics">
+                  <div><span>Clarity</span><strong>{{ documentRecord.review.clarity }}</strong></div>
+                  <div><span>Grammar</span><strong>{{ documentRecord.review.grammar }}</strong></div>
+                  <div><span>Structure</span><strong>{{ documentRecord.review.structure }}</strong></div>
+                  <div><span>Impact</span><strong>{{ documentRecord.review.impact }}</strong></div>
+                </div>
+                <div v-if="documentRecord.review.strengths?.length" class="mt-4 rounded-xl bg-emerald-50 p-3">
+                  <strong class="text-xs text-emerald-800">What already works</strong>
+                  <ul class="mt-2 space-y-1 text-xs leading-5 text-emerald-700">
+                    <li v-for="strength in documentRecord.review.strengths.slice(0, 3)" :key="strength">{{ strength }}</li>
+                  </ul>
+                </div>
+                <h3 class="suggestions-title">Top suggestions <span>{{ documentRecord.review.suggestions.filter((item) => !item.dismissed && !item.accepted).length }}</span></h3>
+                <div class="review-suggestions">
+                  <article v-for="suggestion in documentRecord.review.suggestions.filter((item) => !item.dismissed && !item.accepted)" :key="suggestion.id" :class="['review-suggestion', suggestion.tone, expandedSuggestion === suggestion.id && 'expanded']">
+                    <button class="suggestion-heading" @click="expandedSuggestion = expandedSuggestion === suggestion.id ? null : suggestion.id"><span>{{ suggestion.title }}</span><ChevronDown :size="16" /></button>
+                    <div v-if="expandedSuggestion === suggestion.id">
+                      <p>{{ suggestion.detail }}</p>
+                      <button v-if="suggestion.replacement" class="rewrite-button" :disabled="Boolean(suggestionSaving)" @click="acceptSuggestion(suggestion)">{{ suggestionSaving === suggestion.id ? 'Applying...' : 'Apply rewrite' }}</button>
+                      <button v-if="suggestion.replacement" :disabled="Boolean(suggestionSaving)" @click="previewSuggestion = previewSuggestion === suggestion.id ? null : suggestion.id">{{ previewSuggestion === suggestion.id ? 'Hide preview' : 'Preview' }}</button>
+                      <button :disabled="Boolean(suggestionSaving)" @click="dismissSuggestion(suggestion)">Dismiss</button>
+                    </div>
+                    <div v-if="previewSuggestion === suggestion.id" class="rewrite-preview"><span>Suggested rewrite</span><p>{{ suggestion.replacement }}</p></div>
+                  </article>
+                  <p v-if="!documentRecord.review.suggestions.some((item) => !item.dismissed && !item.accepted)" class="rounded-xl bg-emerald-50 p-4 text-center text-xs text-emerald-700">You have worked through every suggestion in this review.</p>
+                </div>
+              </section>
+              <section v-else class="review-score-card text-center">
+                <span class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-violet-100 text-[#5b45f5]"><Sparkles :size="22" /></span>
+                <h2 class="mt-3 text-sm font-bold text-[#17136b]">Proofread this draft</h2>
+                <p class="mt-2 text-xs leading-5 text-slate-500">Get scores for clarity, grammar, structure, and impact, plus suggestions you can apply.</p>
+                <button type="button" class="btn-primary mt-4" :disabled="reviewLoading" @click="runReview()">
+                  <LoaderCircle v-if="aiBusyKind === 'review'" class="animate-spin" :size="15" /><Sparkles v-else :size="15" />
+                  {{ aiBusyKind === 'review' ? 'Reviewing...' : 'Review this draft' }}
+                </button>
+              </section>
+            </div>
           </div>
         </aside>
       </div>
@@ -860,5 +1441,37 @@ onBeforeUnmount(() => {
   display: none;
   width: 0;
   height: 0;
+}
+
+.consult-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.65rem;
+  background: #5b45f5;
+  color: #fff;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.consult-icon-btn:hover:not(:disabled) {
+  background: #4a36e0;
+}
+
+.consult-icon-btn:disabled {
+  opacity: 0.45;
+}
+
+.consult-history-popover {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 20;
+  width: min(100%, 17.5rem);
+  border: 1px solid #e2e8f0;
+  border-radius: 0.9rem;
+  background: #fff;
+  padding: 0.75rem;
+  box-shadow: 0 12px 28px rgba(23, 19, 107, 0.12);
 }
 </style>

@@ -70,6 +70,7 @@ export interface DocumentReview {
 export interface DocumentPage { id: string; title: string; content: string }
 export interface ScholarshipDocument {
   id: string
+  key?: string
   kind: DocumentKind
   title: string
   description: string

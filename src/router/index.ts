@@ -21,6 +21,7 @@ const router = createRouter({
     { path: '/mentors', component: () => import('../views/MentorsView.vue'), meta: { title: 'Mentors | Minerva', workspace: true } },
     { path: '/wishlist', component: () => import('../views/WishlistView.vue'), meta: { title: 'Wishlist | Minerva', workspace: true } },
     { path: '/payment', component: () => import('../views/PaymentView.vue'), meta: { title: 'Tokens & payment | Minerva', workspace: true } },
+    { path: '/admin/scholarships', component: () => import('../views/AdminScholarshipsView.vue'), meta: { title: 'Scholarship administration | Minerva', workspace: true, admin: true } },
     { path: '/pricing', component: () => import('../views/PricingView.vue'), meta: { title: 'Pricing | Minerva' } },
     { path: '/login', component: () => import('../views/LoginView.vue'), meta: { title: 'Log in | Minerva', auth: true } },
     { path: '/register', component: () => import('../views/RegisterView.vue'), meta: { title: 'Create an account | Minerva', auth: true } },
@@ -66,8 +67,9 @@ async function ensureAuthenticated() {
 
 router.beforeEach(async (to) => {
   const requiresAuth = Boolean(to.meta.workspace || to.meta.requiresAuth)
-  if (!requiresAuth || await ensureAuthenticated()) return true
-  return { path: '/login', query: { redirect: to.fullPath } }
+  if (requiresAuth && !await ensureAuthenticated()) return { path: '/login', query: { redirect: to.fullPath } }
+  if (to.meta.admin && useAppState().session.value?.role !== 'admin') return { path: '/dashboard' }
+  return true
 })
 
 router.afterEach((to) => { document.title = String(to.meta.title ?? 'Minerva') })
