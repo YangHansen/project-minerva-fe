@@ -165,7 +165,7 @@ const save = async () => {
           <div v-else-if="step === 1" class="onboarding-fields">
             <label class="field-label">Last education<BaseSelect v-model="form.currentEducationLevel" :options="educationLevels" placeholder="Select your last education" /></label>
             <label class="field-label">Target education<BaseSelect v-model="form.targetEducationLevel" :options="targetEducationLevels" placeholder="Select your target education" /></label>
-            <label v-if="requiresGpa" class="field-label">GPA <span class="text-red-500">Required</span><input v-model="form.gpa" required class="field" inputmode="decimal" placeholder="e.g. 3.75 / 4.00" /><small>Required for master’s and doctorate applications.</small></label>
+            <label v-if="requiresGpa" class="field-label"><span>GPA <span class="text-red-500">(Required)</span></span><input v-model="form.gpa" required class="field" inputmode="decimal" placeholder="e.g. 3.75 / 4.00" /><small>Required for master’s and doctorate applications.</small></label>
             <label class="field-label" :class="!requiresGpa && 'span-2'">Target field of study<BaseSelect v-model="form.fieldOfStudy" :options="fieldSuggestions" placeholder="Search and choose a field of study" searchable /><small>Search from a detailed list of subjects.</small></label>
           </div>
 
