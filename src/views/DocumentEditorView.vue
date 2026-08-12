@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AlertCircle, AlignLeft, ArrowRight, Bold, Check, ChevronDown, Download, Edit3, Eraser, Highlighter, Italic, Link2, List, ListOrdered, LoaderCircle, MessageSquare, Redo2, Sparkles, Strikethrough, Underline, Undo2 } from 'lucide-vue-next'
+import { AlertCircle, AlignLeft, ArrowLeft, ArrowRight, Bold, Check, ChevronDown, Download, Edit3, Eraser, Highlighter, Italic, Link2, List, ListOrdered, LoaderCircle, MessageSquare, Redo2, Sparkles, Strikethrough, Underline, Undo2 } from 'lucide-vue-next'
 import type { DocumentReview, DocumentSuggestion } from '../types'
 import { ApiError, apiRequest } from '../api'
 import { chooseRewriteCandidate } from '../lib/documentRewrite'
@@ -26,6 +26,20 @@ const documentLocation = computed(() => {
 const selected = computed(() => getScholarship(documentLocation.value?.scholarshipId || selectedId.value || ''))
 const documentRecord = computed(() => documentLocation.value?.document)
 const editor = ref<HTMLElement | null>(null)
+const titleInput = ref<HTMLInputElement | null>(null)
+const editTitle = async () => {
+  await nextTick()
+  titleInput.value?.focus()
+  titleInput.value?.select()
+}
+const returnToDocuments = async () => {
+  const document = documentRecord.value
+  if (document) {
+    syncEditor()
+    await saveDocument(document).catch(() => undefined)
+  }
+  await router.push('/documents')
+}
 const activePageId = ref('')
 const documentPages = computed(() => documentRecord.value?.pages || [])
 const activePage = computed(() => documentPages.value.find((page) => page.id === activePageId.value) || documentPages.value[0])
@@ -740,7 +754,8 @@ onBeforeUnmount(() => {
     <WorkspaceSidebar active="documents" />
     <div v-if="documentRecord && selected" class="workspace-main document-editor-main">
       <header class="editor-topbar">
-        <div class="editor-heading"><p class="workspace-kicker">AI writing editor</p><div><input v-model="documentRecord.title" :size="Math.max(5, Math.min(32, documentRecord.title.length + 1))" aria-label="Document title" @input="syncEditor" /><Edit3 :size="17" /></div><p><span><Check :size="15" />{{ autosaveState }}</span><i />{{ modifiedLabel }}<i /><select v-model="selectedVersion" aria-label="Document version" @change="restoreVersion"><option value="current">Current draft</option><option v-for="version in documentRecord.versions" :key="version.id" :value="version.id">{{ version.label }}</option></select><ChevronDown :size="14" /></p></div>
+        <button type="button" class="editor-back-button" title="Back to documents" aria-label="Back to documents" @click="returnToDocuments"><ArrowLeft :size="18" /><span>Documents</span></button>
+        <div class="editor-heading"><p class="workspace-kicker">AI writing editor</p><div><input ref="titleInput" v-model="documentRecord.title" class="editor-heading_input" :size="Math.max(5, Math.min(32, documentRecord.title.length + 1))" aria-label="Document title" @input="syncEditor" @blur="syncEditor" @keydown.enter.prevent="titleInput?.blur()" /><button type="button" class="editor-title-edit" aria-label="Edit document title" @click="editTitle"><Edit3 :size="17" /></button></div><p><span><Check :size="15" />{{ autosaveState }}</span><i />{{ modifiedLabel }}<i /><select v-model="selectedVersion" aria-label="Document version" @change="restoreVersion"><option value="current">Current draft</option><option v-for="version in documentRecord.versions" :key="version.id" :value="version.id">{{ version.label }}</option></select><ChevronDown :size="14" /></p></div>
         <div class="editor-head-actions"><button class="btn-primary" @click="saveReady">Save</button><button class="btn-secondary" :disabled="versionSaving" @click="createVersion">{{ versionSaving ? 'Saving version...' : 'Create new version' }}</button><div class="export-menu"><button type="button" class="btn-secondary export-trigger" :disabled="Boolean(exporting)" aria-haspopup="menu" :aria-expanded="exportMenuOpen" @click="exportMenuOpen = !exportMenuOpen"><Download :size="16" />{{ exporting ? `Exporting ${exporting.toUpperCase()}...` : 'Export' }}<ChevronDown :size="14" /></button><div v-if="exportMenuOpen" class="export-popover" role="menu"><button type="button" role="menuitem" @click="exportDocument('docx')"><strong>Word document</strong><small>.docx - editable</small></button><button type="button" role="menuitem" @click="exportDocument('pdf')"><strong>PDF document</strong><small>.pdf - ready to share</small></button></div></div></div>
       </header>
 

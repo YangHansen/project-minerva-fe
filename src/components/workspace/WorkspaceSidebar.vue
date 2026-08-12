@@ -19,9 +19,9 @@ const links = [
 </script>
 
 <template>
-  <aside class="sticky top-0 flex h-screen self-start flex-col overflow-y-auto border-r border-slate-200 bg-white px-[18px] pb-5 pt-[26px] max-[900px]:static max-[900px]:h-auto max-[900px]:w-full max-[900px]:overflow-hidden max-[900px]:border-b max-[900px]:border-r-0 max-[900px]:p-4" :class="collapsed && 'collapsed items-center px-3 max-[900px]:items-stretch max-[900px]:px-4'">
+  <aside class="workspace-sidebar sticky top-0 flex h-screen self-start flex-col overflow-y-auto border-r border-slate-200 bg-white px-[18px] pb-5 pt-[26px] max-[900px]:static max-[900px]:h-auto max-[900px]:w-full max-[900px]:overflow-hidden max-[900px]:border-b max-[900px]:border-r-0 max-[900px]:p-4" :class="collapsed && 'collapsed sidebar-collapsed items-center px-3 max-[900px]:items-stretch max-[900px]:px-4'">
     <div class="flex items-center justify-between gap-2" :class="collapsed && 'w-full flex-col gap-2'">
-      <RouterLink to="/dashboard" class="flex min-w-0 items-center p-0.5" aria-label="Go to My Scholarships"><img src="/minerva-logo.png" alt="" class="h-14 w-[185px] object-cover" :class="collapsed && 'size-12 rounded-xl object-cover object-[20%_50%]'"/><span class="hidden text-xl font-extrabold tracking-tight text-[#17136b]">Minerva</span></RouterLink>
+      <RouterLink to="/dashboard" class="flex min-w-0 items-center p-0.5" aria-label="Go to My Scholarships"><img :src="collapsed ? '/minerva-owl.png' : '/minerva-logo.png'" :alt="collapsed ? 'Minerva' : ''" :class="collapsed ? 'size-14 rounded-2xl object-cover' : 'h-14 w-[185px] object-cover'"/><span class="hidden text-xl font-extrabold tracking-tight text-[#17136b]">Minerva</span></RouterLink>
       <button class="grid size-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:border-violet-300 hover:text-[#5b45f5]" :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'" @click="collapsed=!collapsed"><PanelLeftOpen v-if="collapsed" :size="18"/><PanelLeftClose v-else :size="18"/></button>
     </div>
     <p class="mt-10 px-3 text-[10px] font-extrabold uppercase tracking-[.18em] text-slate-400" :class="collapsed && 'hidden'">Scholar workspace</p>
@@ -37,3 +37,10 @@ const links = [
     </RouterLink>
   </aside>
 </template>
+<style scoped>
+.sidebar-collapsed {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.sidebar-collapsed::-webkit-scrollbar { display: none; }
+</style>

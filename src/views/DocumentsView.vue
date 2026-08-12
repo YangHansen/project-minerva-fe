@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Edit3, Eye, FilePlus2, FileText, Folder, Search, Trash2, Upload, X } from 'lucide-vue-next'
+import { Edit3, FilePlus2, FileText, Folder, Search, Trash2, Upload, X } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import type { DocumentKind, ScholarshipDocument } from '../types'
 import { useAppState } from '../composables/useAppState'
-import { API_BASE_URL } from '../api'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseSelect from '../components/common/BaseSelect.vue'
@@ -70,21 +69,6 @@ const editedLabel = (date: string) => {
 }
 
 const openEditor = (doc: ScholarshipDocument) => router.push(`/documents/${doc.id}`)
-const openUploadedFile = async (doc: ScholarshipDocument) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/documents/${encodeURIComponent(doc.id)}/file`, { credentials: 'include' })
-    if (!response.ok) throw new Error('Unable to open the uploaded file.')
-    const url = URL.createObjectURL(await response.blob())
-    const link = document.createElement('a')
-    link.href = url
-    link.target = '_blank'
-    link.rel = 'noopener noreferrer'
-    link.click()
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
-  } catch (caught) {
-    toast(caught instanceof Error ? caught.message : 'Unable to open the uploaded file.', 'info')
-  }
-}
 const removeDocument = async (doc: ScholarshipDocument) => {
   if (deletingDocumentId.value || !window.confirm(`Delete "${doc.title}"? This permanently removes its saved versions and AI reviews.`)) return
   deletingDocumentId.value = doc.id
@@ -111,12 +95,13 @@ const createDocument = async () => {
   createError.value = ''
   try {
     if (newDocumentFile.value) {
-      await uploadDocument(selectedId.value, newDocumentFile.value, newDocumentTitle.value, type.kind, {
+      const doc = await uploadDocument(selectedId.value, newDocumentFile.value, newDocumentTitle.value, type.kind, {
         category: type.label,
         description: type.description,
       })
       isCreateOpen.value = false
-      toast('External document uploaded to this scholarship.')
+      toast('DOCX uploaded and ready to edit.')
+      await router.push(`/documents/${doc.id}`)
     } else {
       const doc = await addDocument(selectedId.value, newDocumentTitle.value.trim(), type.kind, {
         category: type.label,
@@ -180,9 +165,7 @@ const createDocument = async () => {
 <FileText :size="22" />
 </span>
 <div class="library-card-actions">
-<button v-if="doc.uploadName" @click="openUploadedFile(doc)">
-<Eye :size="15" />Preview</button>
-<button v-else @click="openEditor(doc)">
+<button @click="openEditor(doc)">
 <Edit3 :size="15" />Edit</button>
 <button :disabled="deletingDocumentId === doc.id" :aria-label="`Delete ${doc.title}`" class="text-rose-600" @click="removeDocument(doc)">
 <Trash2 :size="16" />{{ deletingDocumentId === doc.id ? 'Deleting…' : 'Delete' }}
@@ -228,9 +211,9 @@ const createDocument = async () => {
         <label>Document title<input v-model="newDocumentTitle" :placeholder="newDocumentFile ? 'Optional — filename will be used' : selectedDocumentType.label" autofocus />
 </label>
         <label class="document-upload-field">
-          <span>External file <small>Optional</small></span>
-          <span class="document-upload-picker"><Upload :size="17" />{{ newDocumentFile?.name || 'Choose PDF, DOC, DOCX, TXT, PNG, or JPG' }}</span>
-          <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" @change="newDocumentFile = ($event.target as HTMLInputElement).files?.[0] || null" />
+          <span>Word document <small>Optional · DOCX only</small></span>
+          <span class="document-upload-picker"><Upload :size="17" />{{ newDocumentFile?.name || 'Choose a DOCX file' }}</span>
+          <input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="newDocumentFile = ($event.target as HTMLInputElement).files?.[0] || null" />
         </label>
         <p class="document-create-hint">{{ selectedDocumentType.description }}</p>
         <p v-if="createError" class="error">{{ createError }}</p>
