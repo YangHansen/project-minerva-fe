@@ -11,7 +11,7 @@ import BaseModal from '../components/common/BaseModal.vue'
 import { useAppState } from '../composables/useAppState'
 import { API_BASE_URL, apiRequest } from '../api'
 import {
-  evaluateIeltsSpeaking, evaluateIeltsWriting, getIeltsSet,
+  evaluateIeltsSpeaking, evaluateIeltsWriting, fetchIeltsSpeakingQuestionVoice, getIeltsSet,
   submitIeltsSet, submitIeltsSpeakingTurn,
 } from '../services/ielts'
 import type {
@@ -72,8 +72,11 @@ const aiEvaluations = ref<IeltsAiEvaluation[]>([])
 const writingTaskEvaluations = ref<Array<{ task: 1 | 2; evaluation: IeltsAiEvaluation }>>([])
 const speakingTranscripts = ref<Record<number, string>>({})
 const speakingConversation = ref<Record<number, { examiner: string; candidate: string; nextQuestion?: string; shouldContinue: boolean }>>({})
-const speakingTurnHistory = ref<Array<{ examiner: string; candidate: string }>>([])
+const speakingTurnHistory = ref<Array<{ examiner: string; candidate: string; reply?: string; part: number }>>([])
 const speakingTurnLoading = ref(false)
+const speakingVoiceNotice = ref('')
+const speakingAiSpeaking = ref(false)
+const latestSpeakingVoice = ref<{ dataUrl: string; contentType: string; text?: string } | null>(null)
 const transcriptionHistory = ref<TranscriptionHistoryItem[]>([])
 const transcriptionHistoryLoading = ref(false)
 const transcriptionHistoryError = ref('')
@@ -91,6 +94,7 @@ let recordingChunks: Blob[] = []
 let recordingStartedAt = 0
 let stopRecordingPromise: Promise<void> | null = null
 let resolveRecordingStop: (() => void) | null = null
+let speakingAudio: HTMLAudioElement | undefined
 
 const skills = [
   { name: 'Listening' as Skill, icon: Headphones, detail: '4 parts · 40 questions', time: '30 min' },
@@ -158,7 +162,15 @@ const combinedWritingBand = computed(() => {
   return Math.round(((Number(task1) + (2 * Number(task2))) / 3) * 2) / 2
 })
 const speakingPrompt = (part: number) => speakingExercises.value[part - 1]?.content || ''
-const currentSpeakingQuestion = computed(() => speakingConversation.value[speakingPart.value]?.nextQuestion || speakingPrompt(speakingPart.value))
+const openingSpeakingQuestion = (part: number) => {
+  const content = speakingPrompt(part).replace(/\s+/g, ' ').trim()
+  if (!content) return ''
+  const segments = content.split(/(?<=\?)\s+/).map((item) => item.trim()).filter(Boolean)
+  return (segments[0] || content).slice(0, 500)
+}
+const currentSpeakingQuestion = computed(() => speakingConversation.value[speakingPart.value]?.nextQuestion || openingSpeakingQuestion(speakingPart.value))
+const speakingThread = computed(() => speakingTurnHistory.value.filter((turn) => turn.part === speakingPart.value))
+const speakingPartComplete = computed(() => speakingConversation.value[speakingPart.value]?.shouldContinue === false)
 const formatTime = computed(() => `${String(Math.floor(remaining.value / 60)).padStart(2, '0')}:${String(remaining.value % 60).padStart(2, '0')}`)
 const wordCount = computed(() => writingAnswers.value[writingTask.value].trim() ? writingAnswers.value[writingTask.value].trim().split(/\s+/).length : 0)
 const answeredCount = computed(() => {
@@ -171,13 +183,13 @@ const answeredCount = computed(() => {
     return answers.filter(Boolean).length
   }
   if (currentSkill.value === 'Writing') return Number(Boolean(writingAnswers.value[1].trim())) + Number(Boolean(writingAnswers.value[2].trim()))
-  return Number(recordingSaved.value)
+  return speakingTurnHistory.value.filter((turn) => turn.part === speakingPart.value).length
 })
 const totalQuestions = computed(() => {
   if (currentSkill.value === 'Listening') return currentListeningExercise.value?.questions.length || 0
   if (currentSkill.value === 'Reading') return currentReadingExercise.value?.questions.length || 0
   if (currentSkill.value === 'Writing') return 2
-  return 3
+  return Math.max(3, speakingTurnHistory.value.filter((turn) => turn.part === speakingPart.value).length + (speakingConversation.value[speakingPart.value]?.shouldContinue === false ? 0 : 1))
 })
 const combinedStrengths = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.strengths || []))].slice(0, 5))
 const combinedImprovements = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.improvements || []))].slice(0, 5))
@@ -196,8 +208,57 @@ const loadTranscriptionHistory = async () => {
   }
 }
 
-watch(speakingPart, (part) => { recordingSaved.value = speakingRecordings.has(part) })
+watch(speakingPart, (part) => {
+  recordingSaved.value = speakingRecordings.has(part)
+  if (stage.value === 'exam' && currentSkill.value === 'Speaking') {
+    void speakCurrentSpeakingQuestion(part === 1
+      ? 'Hello. I am your IELTS speaking examiner. Let us begin with part one.'
+      : part === 2
+        ? 'Now we move to part two. Here is your topic.'
+        : 'Thank you. Now let us move to part three.')
+  }
+})
 watch(listeningAudioUrl, () => { listeningAudioFailed.value = false })
+
+const stopSpeakingVoice = () => {
+  speakingAudio?.pause()
+  speakingAudio = undefined
+  speakingAiSpeaking.value = false
+}
+const playSpeakingVoice = async (voice?: { dataUrl: string; contentType: string; text?: string } | null) => {
+  if (!voice?.dataUrl) return
+  stopSpeakingVoice()
+  latestSpeakingVoice.value = voice
+  const audio = new Audio(voice.dataUrl)
+  speakingAudio = audio
+  audio.onplay = () => { speakingAiSpeaking.value = true }
+  audio.onended = () => { if (speakingAudio === audio) speakingAiSpeaking.value = false }
+  audio.onerror = () => { if (speakingAudio === audio) speakingAiSpeaking.value = false }
+  try {
+    await audio.play()
+  } catch {
+    speakingVoiceNotice.value = 'Tap “Replay examiner” to hear the question aloud.'
+  }
+}
+const speakCurrentSpeakingQuestion = async (introduction?: string) => {
+  const part = speakingPart.value
+  const text = currentSpeakingQuestion.value.trim()
+  if (!text || speakingTurnLoading.value || recording.value) return
+  speakingVoiceNotice.value = ''
+  try {
+    const result = await fetchIeltsSpeakingQuestionVoice({
+      text,
+      part,
+      introduction: introduction || (speakingThread.value.length
+        ? 'Here is the next question.'
+        : undefined),
+    })
+    if (result.voice) await playSpeakingVoice(result.voice)
+    else if (result.reason) speakingVoiceNotice.value = result.reason
+  } catch {
+    speakingVoiceNotice.value = 'Examiner voice is temporarily unavailable. You can continue with the question on screen.'
+  }
+}
 
 const resetAttempt = () => {
   window.clearInterval(timer)
@@ -223,6 +284,10 @@ const resetAttempt = () => {
   speakingConversation.value = {}
   speakingTurnHistory.value = []
   speakingTurnLoading.value = false
+  speakingVoiceNotice.value = ''
+  speakingAiSpeaking.value = false
+  latestSpeakingVoice.value = null
+  stopSpeakingVoice()
   reviewed.value = []
   aiEvaluations.value = []
   writingTaskEvaluations.value = []
@@ -266,7 +331,11 @@ const beginTest = () => {
   if (currentSkill.value === 'Speaking' && !fullTest.value) stage.value = 'microphone'
   else { stage.value = 'exam'; if (mode.value === 'simulation') startTimer() }
 }
-const beginSpeaking = () => { stage.value = 'exam'; if (mode.value === 'simulation') startTimer() }
+const beginSpeaking = () => {
+  stage.value = 'exam'
+  if (mode.value === 'simulation') startTimer()
+  void speakCurrentSpeakingQuestion('Hello. I am your IELTS speaking examiner. Let us begin.')
+}
 const exitTest = () => { window.clearInterval(timer); speechSynthesis.cancel(); stage.value = 'catalog'; playing.value = false }
 const toggleReview = (number: number) => { reviewed.value = reviewed.value.includes(number) ? reviewed.value.filter((item) => item !== number) : [...reviewed.value, number] }
 
@@ -329,24 +398,77 @@ const toggleRecording = async () => {
 const submitSpeakingTurn = async (part: number, audio: Blob, durationSeconds: number) => {
   speakingTurnLoading.value = true
   aiError.value = ''
+  speakingVoiceNotice.value = ''
   try {
     const previous = speakingConversation.value[part]
+    const askedPrompt = previous?.nextQuestion || openingSpeakingQuestion(part)
+    if (!askedPrompt.trim()) {
+      throw new Error('No speaking question is available for this part yet.')
+    }
     const form = new FormData()
-    form.append('audio', audio, `ielts-speaking-part-${part}.webm`)
-    form.append('prompt', previous?.nextQuestion || speakingPrompt(part))
+    const file = audio instanceof File
+      ? audio
+      : new File([audio], `ielts-speaking-part-${part}.webm`, { type: audio.type || 'audio/webm' })
+    form.append('audio', file, file.name)
+    form.append('prompt', askedPrompt)
+    form.append('partBrief', speakingPrompt(part) || askedPrompt)
     form.append('part', String(part))
-    form.append('durationSeconds', String(durationSeconds))
-    form.append('history', JSON.stringify(speakingTurnHistory.value))
+    form.append('durationSeconds', String(Math.max(1, durationSeconds)))
+    const historyPayload = speakingTurnHistory.value.map(({ examiner, candidate }) => ({ examiner, candidate }))
+    if (historyPayload.length) {
+      form.append('history', JSON.stringify(historyPayload))
+    }
     const result = await submitIeltsSpeakingTurn(form)
     syncAiTokenBalance(result)
     speakingTranscripts.value = { ...speakingTranscripts.value, [part]: result.transcript.text }
-    speakingConversation.value = { ...speakingConversation.value, [part]: { examiner: result.examiner.text, candidate: result.transcript.text, nextQuestion: result.examiner.nextQuestion, shouldContinue: result.examiner.shouldContinue } }
-    speakingTurnHistory.value = [...speakingTurnHistory.value, { examiner: result.examiner.text, candidate: result.transcript.text }]
-    if (result.voice?.dataUrl) { const player = new Audio(result.voice.dataUrl); player.play().catch(() => { /* Browser may require user interaction; replay stays available as text. */ }) }
+    speakingConversation.value = {
+      ...speakingConversation.value,
+      [part]: {
+        examiner: result.examiner.text,
+        candidate: result.transcript.text,
+        nextQuestion: result.examiner.nextQuestion,
+        shouldContinue: result.examiner.shouldContinue,
+      },
+    }
+    speakingTurnHistory.value = [
+      ...speakingTurnHistory.value,
+      {
+        examiner: askedPrompt,
+        candidate: result.transcript.text,
+        reply: result.examiner.text,
+        part,
+      },
+    ]
+    if (result.voice?.dataUrl) await playSpeakingVoice(result.voice)
+    else if (result.examiner.nextQuestion) {
+      await speakCurrentSpeakingQuestion('Thank you. Here is the next question.')
+    } else if (part < 3) {
+      speakingVoiceNotice.value = 'This part is complete. Continue to the next speaking part when you are ready.'
+    } else {
+      speakingVoiceNotice.value = 'Speaking practice is complete. You can submit when ready.'
+    }
     void loadTranscriptionHistory()
   } catch (error) {
+    syncAiTokenBalance(error)
+    // Keep the recording so the candidate can retry the same answer.
+    if (speakingPart.value === part) recordingSaved.value = false
     aiError.value = error instanceof Error ? error.message : 'Could not continue the IELTS speaking conversation.'
-  } finally { speakingTurnLoading.value = false }
+  } finally {
+    speakingTurnLoading.value = false
+  }
+}
+
+const goToSpeakingPart = (part: number) => {
+  if (part < 1 || part > 3 || recording.value || speakingTurnLoading.value) return
+  speakingPart.value = part
+}
+
+const retrySpeakingTurn = async () => {
+  const part = speakingPart.value
+  const audio = speakingRecordings.get(part)
+  const duration = speakingDurations.get(part) || 1
+  if (!audio || speakingTurnLoading.value || recording.value) return
+  await submitSpeakingTurn(part, audio, duration)
 }
 
 const evaluateWriting = async () => {
@@ -465,7 +587,12 @@ const loadSet = async (setNumber = 1) => {
   finally { loadingSet.value = false }
 }
 onMounted(() => { void loadSet(); void loadTranscriptionHistory() })
-onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micStream?.getTracks().forEach((track) => track.stop()) })
+onUnmounted(() => {
+  window.clearInterval(timer)
+  speechSynthesis.cancel()
+  stopSpeakingVoice()
+  micStream?.getTracks().forEach((track) => track.stop())
+})
 </script>
 
 <template>
@@ -809,22 +936,49 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 <p class="text-xs font-extrabold uppercase tracking-[.14em] text-[#5b45f5]">Speaking part {{ speakingPart }}</p>
 <h1 class="mt-4 text-3xl font-extrabold">{{ speakingPart === 1 ? 'Introduction and interview' : speakingPart === 2 ? 'Individual long turn' : 'Two-way discussion' }}</h1>
 <p class="mt-5 max-w-2xl text-lg leading-8 text-slate-600">{{ currentSpeakingQuestion }}</p>
+<div class="mt-4 flex flex-wrap items-center justify-center gap-2">
+  <button type="button" class="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-extrabold text-[#5b45f5]" :disabled="speakingTurnLoading || recording" @click="speakCurrentSpeakingQuestion()">
+    <Volume2 :size="15" />{{ speakingAiSpeaking ? 'Examiner speaking…' : 'Hear examiner' }}
+  </button>
+  <button type="button" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-600" :disabled="!latestSpeakingVoice" @click="playSpeakingVoice(latestSpeakingVoice)">
+    <Play :size="15" />Replay examiner
+  </button>
+</div>
+<p v-if="speakingVoiceNotice" class="mt-3 max-w-xl text-xs font-bold text-amber-700">{{ speakingVoiceNotice }}</p>
 <div class="mt-9 flex h-20 items-center gap-2">
 <i v-for="n in 16" :key="n" class="w-2 rounded-full bg-[#5b45f5]" :style="{ height: `${recording ? 18 + ((n * 17) % 54) : 10}px`, opacity: recording ? 1 : .25 }" />
 </div>
-<button class="mt-7 inline-flex items-center gap-3 rounded-2xl px-6 py-4 font-extrabold text-white" :class="recording ? 'bg-red-600' : 'bg-[#5b45f5]'" @click="toggleRecording">
+<button class="mt-7 inline-flex items-center gap-3 rounded-2xl px-6 py-4 font-extrabold text-white" :class="recording ? 'bg-red-600' : 'bg-[#5b45f5]'" :disabled="speakingTurnLoading || speakingAiSpeaking" @click="toggleRecording">
 <Pause v-if="recording" :size="20" />
-<Mic v-else :size="20" />{{ recording ? 'Stop recording' : recordingSaved ? 'Record again' : 'Start recording' }}</button>
-<p v-if="recordingSaved" class="mt-3 text-sm font-bold text-emerald-600">
-<Check :size="15" class="inline" />Response saved</p>
+<Mic v-else :size="20" />{{ recording ? 'Stop recording' : speakingThread.length ? 'Answer follow-up' : 'Start answering' }}</button>
 <p v-if="speakingTurnLoading" class="mt-4 text-sm font-bold text-violet-600">Minerva examiner is listening…</p>
-<p v-if="speakingConversation[speakingPart]?.examiner" class="mt-4 max-w-2xl rounded-xl bg-violet-50 p-4 text-left text-sm leading-6 text-slate-700"><strong class="text-violet-800">Examiner:</strong> {{ speakingConversation[speakingPart].examiner }}</p>
-<p v-if="speakingTranscripts[speakingPart]" class="mt-4 max-w-2xl rounded-xl bg-emerald-50 p-4 text-left text-sm leading-6 text-slate-700"><strong class="text-emerald-800">Your transcript:</strong> {{ speakingTranscripts[speakingPart] }}</p>
+<p v-else-if="speakingPartComplete" class="mt-3 text-sm font-bold text-emerald-600"><Check :size="15" class="inline" />Part {{ speakingPart }} complete. {{ speakingPart < 3 ? 'Continue to the next part.' : 'You can submit when ready.' }}</p>
+<p v-else-if="speakingConversation[speakingPart]?.examiner" class="mt-3 text-sm font-bold text-emerald-600"><Check :size="15" class="inline" />Examiner replied · keep the conversation going</p>
+
+<div v-if="speakingThread.length" class="mt-6 w-full max-w-2xl space-y-3 text-left">
+  <p class="text-xs font-extrabold uppercase tracking-[.14em] text-slate-400">Conversation</p>
+  <article v-for="(turn, index) in speakingThread" :key="`${turn.part}-${index}`" class="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+    <p class="text-sm leading-6 text-slate-700"><strong class="text-violet-800">Examiner:</strong> {{ turn.examiner }}</p>
+    <p class="mt-2 text-sm leading-6 text-slate-700"><strong class="text-emerald-800">You:</strong> {{ turn.candidate }}</p>
+    <p v-if="turn.reply" class="mt-2 text-sm leading-6 text-slate-700"><strong class="text-violet-800">Examiner:</strong> {{ turn.reply }}</p>
+  </article>
+</div>
+
 <p v-if="aiError" class="mt-4 max-w-2xl rounded-xl bg-red-50 p-4 text-sm font-bold text-red-700">{{ aiError }}</p>
+<button
+  v-if="aiError && !speakingTurnLoading"
+  type="button"
+  class="mt-3 inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-extrabold text-red-600"
+  :disabled="recording"
+  @click="retrySpeakingTurn"
+>
+  Retry sending answer
+</button>
 <div class="mt-10 flex gap-3">
-<button class="btn-secondary" :disabled="recording || speakingPart === 1" @click="speakingPart--">
+<button class="btn-secondary" :disabled="recording || speakingTurnLoading || speakingPart === 1" @click="goToSpeakingPart(speakingPart - 1)">
 <ChevronLeft :size="16" />Previous part</button>
-<button class="btn-primary" :disabled="recording || speakingPart === 3" @click="speakingPart++">Next part <ChevronRight :size="16" />
+<button class="btn-primary" :disabled="recording || speakingTurnLoading || speakingPart === 3" @click="goToSpeakingPart(speakingPart + 1)">
+  {{ speakingPartComplete && speakingPart < 3 ? 'Continue to next part' : 'Next part' }} <ChevronRight :size="16" />
 </button>
 </div>
 </section>

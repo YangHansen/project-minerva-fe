@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, BarChart3, CheckCircle2, CircleStop, Clock3, Mic, Pause, Play, Sparkles, Trash2, Video, Volume2 } from 'lucide-vue-next'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
@@ -98,6 +98,8 @@ const aiError = ref('')
 const voiceNotice = ref('')
 const aiSpeaking = ref(false)
 const latestVoice = ref<InterviewAudio | null>(null)
+const conversation = ref<Array<{ question: string; answer: string; reply?: string }>>([])
+const conversationPanel = ref<HTMLElement | null>(null)
 const summary = ref<InterviewSummary | null>(null)
 const interviewHistory = ref<InterviewHistoryItem[]>([])
 const selectedHistorySession = ref<InterviewHistorySession | null>(null)
@@ -239,23 +241,31 @@ const stopKokoroVoice = () => {
   aiAudio = undefined
   aiSpeaking.value = false
 }
-const playKokoroVoice = async (voice?: InterviewAudio) => {
+const playKokoroVoice = async (voice?: InterviewAudio | null) => {
   if (!voice?.dataUrl) return
   stopKokoroVoice()
   latestVoice.value = voice
   const audio = new Audio(voice.dataUrl)
   aiAudio = audio
-  audio.onplay = () => { aiSpeaking.value = true }
-  audio.onended = () => { if (aiAudio === audio) aiSpeaking.value = false }
-  audio.onerror = () => { if (aiAudio === audio) aiSpeaking.value = false }
-  try {
-    await audio.play()
-  } catch {
-    aiError.value = 'Tap “Replay voice” to hear Minerva’s response.'
-  }
+  await new Promise<void>((resolve) => {
+    audio.onplay = () => { aiSpeaking.value = true }
+    audio.onended = () => {
+      if (aiAudio === audio) aiSpeaking.value = false
+      resolve()
+    }
+    audio.onerror = () => {
+      if (aiAudio === audio) aiSpeaking.value = false
+      resolve()
+    }
+    void audio.play().catch(() => {
+      aiSpeaking.value = false
+      voiceNotice.value = 'Tap “Replay voice” to hear Minerva’s response.'
+      resolve()
+    })
+  })
 }
 const playQuestionVoice = async (questionId?: string) => {
-  if (!interviewId.value || !questionId || language.value !== 'English') return
+  if (!interviewId.value || !questionId) return
   voiceNotice.value = ''
   try {
     const result = await apiRequest<{ voice?: InterviewAudio | null; reason?: string }>(`/api/interviews/${interviewId.value}/question-voice`, {
@@ -264,8 +274,6 @@ const playQuestionVoice = async (questionId?: string) => {
     if (result.voice) await playKokoroVoice(result.voice)
     else if (result.reason) voiceNotice.value = result.reason
   } catch {
-    // Voice is an enhancement. The written question and interview remain usable
-    // if the TTS provider is temporarily unavailable.
     voiceNotice.value = 'Minerva voice is temporarily unavailable. You can continue with the question on screen.'
   }
 }
@@ -301,10 +309,11 @@ const start = async () => {
     elapsed.value = 0
     questionIndex.value = 0
     answerResults.value = {}
+    conversation.value = []
     summary.value = null
     await nextTick()
     void startCamera()
-    void playQuestionVoice(generatedQuestions.value[0]?.id)
+    await playQuestionVoice(generatedQuestions.value[0]?.id)
     timer = window.setInterval(() => {
       if (!isPaused.value) elapsed.value += 1
     }, 1000)
@@ -324,11 +333,15 @@ const submitRecordedAnswer = async (audio: Blob, durationSeconds: number) => {
   if (!interviewId.value || !question.value) return
   submittingAnswer.value = true
   aiError.value = ''
+  voiceNotice.value = ''
   const activeQuestion = question.value
   try {
     const form = new FormData()
+    const file = audio instanceof File
+      ? audio
+      : new File([audio], `interview-${activeQuestion.id}.webm`, { type: audio.type || 'audio/webm' })
     form.append('questionId', activeQuestion.id)
-    form.append('audio', audio, `interview-${activeQuestion.id}.webm`)
+    form.append('audio', file, file.name)
     form.append('durationSeconds', String(durationSeconds))
     const result = await apiRequest<InterviewAnswerResponse>(`/api/interviews/${interviewId.value}/answers`, {
       method: 'POST',
@@ -340,12 +353,24 @@ const submitRecordedAnswer = async (audio: Blob, durationSeconds: number) => {
       ...answerResults.value,
       [activeQuestion.id]: { transcript, evaluation: result.evaluation, durationSeconds, reply: result.reply?.text },
     }
+    conversation.value = [
+      ...conversation.value,
+      {
+        question: activeQuestion.text,
+        answer: transcript,
+        reply: result.reply?.text,
+      },
+    ]
     if (result.followUp && !generatedQuestions.value.some((item) => item.id === result.followUp?.id)) {
       generatedQuestions.value.splice(questionIndex.value + 1, 0, result.followUp)
     }
-    if (result.voice) void playKokoroVoice(result.voice)
+    if (result.voice) await playKokoroVoice(result.voice)
     toast(result.followUp ? 'Minerva has a follow-up question.' : 'Answer transcribed and reviewed.')
-    if (questionIndex.value < questions.value.length - 1) window.setTimeout(() => { void nextQuestion() }, 650)  } catch (error) {
+    if (questionIndex.value < questions.value.length - 1) {
+      // Reply TTS already includes the follow-up question when one was generated.
+      await nextQuestion({ skipVoice: Boolean(result.followUp && result.voice), force: true })
+    }
+  } catch (error) {
     syncAiTokenBalance(error)
     aiError.value = error instanceof Error ? error.message : 'Could not transcribe this answer.'
   } finally {
@@ -419,14 +444,23 @@ const finish = async () => {
     completingInterview.value = false
   }
 }
-const nextQuestion = async () => {
+const nextQuestion = async (options?: { skipVoice?: boolean; force?: boolean }) => {
   if (recording.value) await toggleMicrophone()
+  if (submittingAnswer.value && !options?.force) return
   const nextIndex = Math.min(questions.value.length - 1, questionIndex.value + 1)
   if (nextIndex === questionIndex.value) return
   questionIndex.value = nextIndex
   await nextTick()
-  void playQuestionVoice(question.value?.id)
+  if (!options?.skipVoice) await playQuestionVoice(question.value?.id)
 }
+
+const scrollConversationToEnd = async () => {
+  await nextTick()
+  const panel = conversationPanel.value
+  if (!panel) return
+  panel.scrollTop = panel.scrollHeight
+}
+watch(() => conversation.value.length, () => { void scrollConversationToEnd() })
 
 onMounted(() => { void loadInterviewHistory() })
 
@@ -444,7 +478,7 @@ onBeforeUnmount(() => {
     <WorkspaceSidebar active="interview" />
     <div class="workspace-main">
       <WorkspaceTopbar title="Interview Prep" subtitle="Practice scholarship interviews with tailored questions and feedback." />
-      <div class="workspace-content">
+      <div class="workspace-content" :class="stage === 'live' && 'interview-live-content'">
         <section v-if="stage === 'home'" class="mx-auto w-full max-w-5xl py-4 sm:py-8">
           <p class="eyebrow">AI interview practice</p>
           <h1 class="mt-2 text-3xl font-extrabold text-[#17136b]">What would you like to do?</h1>
@@ -587,68 +621,96 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <section v-else-if="stage === 'live'" class="overflow-hidden rounded-[28px] border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-[#edf8ff] text-[#17136b] shadow-[0_24px_70px_rgba(47,35,140,.14)]">
-          <header class="flex flex-wrap items-center justify-between gap-4 border-b border-violet-100 bg-white/90 px-5 py-4 sm:px-7">
+        <section v-else-if="stage === 'live'" class="flex max-h-[calc(100dvh-7.5rem)] flex-col overflow-hidden rounded-[28px] border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-[#edf8ff] text-[#17136b] shadow-[0_24px_70px_rgba(47,35,140,.14)]">
+          <header class="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b border-violet-100 bg-white/90 px-5 py-3 sm:px-6">
             <div>
-<p class="flex items-center gap-2 text-sm font-black sm:text-base">
-<span class="grid size-8 place-items-center rounded-xl bg-violet-100 text-[#5b45f5]">
-<Sparkles :size="16" />
-</span>{{ selected?.name }}</p>
-<span class="mt-1 block text-[.7rem] font-bold text-slate-400">{{ language }} · tailored question {{ questionIndex + 1 }}/{{ questions.length }}</span>
-</div>
-            <div class="flex items-center gap-2.5">
-<span class="rounded-full bg-emerald-50 px-3 py-2 text-[.68rem] font-black uppercase tracking-[.08em] text-emerald-700">{{ isPaused ? 'Paused' : 'Connected' }}</span>
-<strong class="rounded-xl bg-violet-50 px-3.5 py-2 text-sm tabular-nums text-[#5b45f5]">{{ formatted }}</strong>
-</div>
-          </header>
-          <div class="grid gap-5 p-4 sm:p-6 lg:grid-cols-2">
-            <div class="relative grid min-h-[320px] place-items-center overflow-hidden rounded-[22px] border border-violet-200 bg-[radial-gradient(circle_at_center,#fff_0%,#f3f0ff_58%,#ebe7ff_100%)]">
-              <video v-if="cameraEnabled" ref="cameraVideo" autoplay muted playsinline class="absolute inset-0 size-full object-cover [transform:scaleX(-1)]" />
-              <span class="absolute left-4 top-4 z-10 rounded-full bg-white px-3 py-1.5 text-[.66rem] font-black text-[#5b45f5]">Your camera</span>
-              <div v-if="!cameraEnabled" class="h-40 w-32 rounded-[48%_48%_44%_44%] border-2 border-[#8b7cf6] bg-white/70" />
-              <button v-if="!cameraEnabled" type="button" class="absolute inset-0 grid place-items-center" @click="startCamera"><span class="rounded-xl bg-white px-4 py-3 text-sm font-extrabold text-[#5b45f5] shadow-sm">Turn on camera</span></button>
-              <p v-if="cameraError" class="absolute bottom-10 right-4 z-10 max-w-[230px] rounded-lg bg-white/90 px-3 py-2 text-right text-[.68rem] font-bold leading-4 text-rose-600">{{ cameraError }}</p>
-              <small class="absolute bottom-4 left-4 z-10 font-bold text-slate-500">Your local camera preview · video is not uploaded</small>
+              <p class="flex items-center gap-2 text-sm font-black sm:text-base">
+                <span class="grid size-8 place-items-center rounded-xl bg-violet-100 text-[#5b45f5]"><Sparkles :size="16" /></span>{{ selected?.name }}
+              </p>
+              <span class="mt-1 block text-[.7rem] font-bold text-slate-400">{{ language }} · question {{ questionIndex + 1 }}/{{ questions.length }}</span>
             </div>
-            <div class="relative grid min-h-[320px] place-items-center overflow-hidden rounded-[22px] border border-violet-200 bg-[radial-gradient(circle_at_center,#fff_0%,#f5f2ff_55%,#ebe7ff_100%)] p-5 text-center">
-              <div class="flex h-full flex-col items-center justify-center">
-                <img src="/ai-interviewer.gif" alt="Animated Minerva AI interviewer" class="h-52 max-w-full object-contain mix-blend-multiply drop-shadow-[0_16px_22px_rgba(64,48,180,.22)] transition" :class="aiSpeaking ? 'scale-105' : ''" />
-                <div class="mt-2 flex items-center justify-center gap-2"><span class="text-lg font-black">Minerva AI interviewer</span><span v-if="aiSpeaking" class="rounded-full bg-violet-100 px-2 py-1 text-[.65rem] font-black uppercase tracking-wide text-[#5b45f5]">Speaking</span></div>
-                
-                <p v-if="voiceNotice" class="mt-2 max-w-sm text-xs font-bold leading-5 text-amber-700">{{ voiceNotice }}</p>
-                <div class="mt-4 flex items-center justify-center gap-2"><button type="button" class="rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-extrabold text-[#5b45f5]" :disabled="!latestVoice" @click="playKokoroVoice(latestVoice || undefined)"><Volume2 :size="15" />Replay voice</button></div>
+            <div class="flex items-center gap-2.5">
+              <span class="rounded-full bg-emerald-50 px-3 py-2 text-[.68rem] font-black uppercase tracking-[.08em] text-emerald-700">{{ isPaused ? 'Paused' : 'Connected' }}</span>
+              <strong class="rounded-xl bg-violet-50 px-3.5 py-2 text-sm tabular-nums text-[#5b45f5]">{{ formatted }}</strong>
+            </div>
+          </header>
+
+          <div class="grid min-h-0 flex-1 gap-4 overflow-hidden p-4 lg:grid-cols-[minmax(240px,0.9fr)_minmax(0,1.2fr)] lg:p-5">
+            <div class="grid min-h-0 gap-3 sm:grid-cols-2 lg:grid-cols-1 lg:overflow-hidden">
+              <div class="relative grid min-h-[160px] place-items-center overflow-hidden rounded-2xl border border-violet-200 bg-[radial-gradient(circle_at_center,#fff_0%,#f3f0ff_58%,#ebe7ff_100%)] lg:min-h-0 lg:flex-1">
+                <video v-if="cameraEnabled" ref="cameraVideo" autoplay muted playsinline class="absolute inset-0 size-full object-cover [transform:scaleX(-1)]" />
+                <span class="absolute left-3 top-3 z-10 rounded-full bg-white px-2.5 py-1 text-[.62rem] font-black text-[#5b45f5]">Your camera</span>
+                <div v-if="!cameraEnabled" class="h-24 w-20 rounded-[48%_48%_44%_44%] border-2 border-[#8b7cf6] bg-white/70" />
+                <button v-if="!cameraEnabled" type="button" class="absolute inset-0 grid place-items-center" @click="startCamera"><span class="rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-[#5b45f5] shadow-sm">Turn on camera</span></button>
+                <p v-if="cameraError" class="absolute bottom-8 right-3 z-10 max-w-[200px] rounded-lg bg-white/90 px-2 py-1.5 text-right text-[.62rem] font-bold leading-4 text-rose-600">{{ cameraError }}</p>
+              </div>
+              <div class="relative flex min-h-[160px] flex-col items-center justify-center overflow-hidden rounded-2xl border border-violet-200 bg-[radial-gradient(circle_at_center,#fff_0%,#f5f2ff_55%,#ebe7ff_100%)] p-3 text-center lg:min-h-0 lg:flex-1">
+                <img src="/ai-interviewer.gif" alt="Animated Minerva AI interviewer" class="h-28 max-w-full object-contain mix-blend-multiply drop-shadow-[0_12px_18px_rgba(64,48,180,.2)] transition sm:h-32" :class="aiSpeaking ? 'scale-105' : ''" />
+                <div class="mt-1 flex items-center justify-center gap-2">
+                  <span class="text-sm font-black">Minerva</span>
+                  <span v-if="aiSpeaking" class="rounded-full bg-violet-100 px-2 py-0.5 text-[.6rem] font-black uppercase tracking-wide text-[#5b45f5]">Speaking</span>
+                </div>
+                <p v-if="voiceNotice" class="mt-1 max-w-xs text-[11px] font-bold leading-4 text-amber-700">{{ voiceNotice }}</p>
+                <button type="button" class="mt-2 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-[11px] font-extrabold text-[#5b45f5]" :disabled="!latestVoice" @click="playKokoroVoice(latestVoice || undefined)"><Volume2 :size="14" class="inline" /> Replay</button>
+              </div>
+            </div>
+
+            <div class="flex min-h-[220px] flex-col overflow-hidden rounded-2xl border border-violet-100 bg-white lg:min-h-0">
+              <div class="flex shrink-0 items-center justify-between gap-3 border-b border-violet-50 px-4 py-2.5">
+                <p class="text-[.68rem] font-extrabold uppercase tracking-[.14em] text-slate-400">Conversation</p>
+                <p v-if="currentAnswer" class="text-[11px] font-bold text-emerald-700">Clarity {{ currentAnswer.evaluation.clarity }} · Relevance {{ currentAnswer.evaluation.relevance }} · Structure {{ currentAnswer.evaluation.structure }}</p>
+              </div>
+              <div ref="conversationPanel" class="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3">
+                <p v-if="!conversation.length" class="rounded-xl bg-violet-50/70 px-3 py-3 text-sm leading-6 text-slate-600">
+                  <strong class="text-[#5b45f5]">Minerva:</strong> {{ question?.text || 'Your first question will appear here.' }}
+                </p>
+                <template v-else>
+                  <div v-for="(turn, index) in conversation" :key="`${index}-${turn.question.slice(0, 24)}`" class="space-y-2">
+                    <p class="rounded-xl bg-violet-50 px-3 py-2 text-sm leading-6 text-slate-700"><strong class="text-[#5b45f5]">Minerva:</strong> {{ turn.question }}</p>
+                    <p class="rounded-xl bg-emerald-50 px-3 py-2 text-sm leading-6 text-slate-700"><strong class="text-emerald-700">You:</strong> {{ turn.answer }}</p>
+                    <p v-if="turn.reply" class="rounded-xl bg-violet-50 px-3 py-2 text-sm leading-6 text-slate-700"><strong class="text-[#5b45f5]">Minerva:</strong> {{ turn.reply }}</p>
+                  </div>
+                </template>
+                <p v-if="conversation.length && question && !currentAnswer" class="rounded-xl border border-dashed border-violet-200 bg-white px-3 py-2 text-sm leading-6 text-slate-700">
+                  <strong class="text-[#5b45f5]">Minerva:</strong> {{ question.text }}
+                </p>
               </div>
             </div>
           </div>
-          <div class="mx-4 mb-4 flex flex-col justify-between gap-4 rounded-2xl border border-violet-100 bg-white px-5 py-4 sm:mx-6 sm:mb-6 sm:flex-row sm:items-center">
-<div class="flex gap-3">
-<span class="grid size-9 shrink-0 place-items-center rounded-xl bg-violet-100 text-sm font-black text-[#5b45f5]">{{ questionIndex + 1 }}</span>
-<p class="max-w-3xl text-sm font-bold leading-6 text-slate-700">{{ question?.text }}</p>
-</div>
-<button v-if="questionIndex < questions.length - 1" class="shrink-0 rounded-xl bg-violet-50 px-4 py-2.5 text-xs font-black text-[#5b45f5]" :disabled="submittingAnswer" @click="nextQuestion">Next question</button>
-</div>
-          <div v-if="currentAnswer" class="mx-4 mb-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm sm:mx-6 sm:mb-6">
-            <p class="font-black text-emerald-800">Answer reviewed</p>
-            <p class="mt-2 leading-6 text-slate-700">{{ currentAnswer.transcript }}</p>
-            <p v-if="currentAnswer.reply" class="mt-3 rounded-xl bg-white p-3 leading-6 text-[#17136b]"><strong>Minerva:</strong> {{ currentAnswer.reply }}</p>
-            <p class="mt-2 text-xs font-bold text-emerald-700">Clarity {{ currentAnswer.evaluation.clarity }} · Relevance {{ currentAnswer.evaluation.relevance }} · Structure {{ currentAnswer.evaluation.structure }}</p>
+
+          <div class="mx-4 mb-3 flex shrink-0 flex-col justify-between gap-3 rounded-2xl border border-violet-100 bg-white px-4 py-3 sm:mx-5 sm:flex-row sm:items-center">
+            <div class="flex min-w-0 gap-3">
+              <span class="grid size-8 shrink-0 place-items-center rounded-xl bg-violet-100 text-sm font-black text-[#5b45f5]">{{ questionIndex + 1 }}</span>
+              <div class="min-w-0">
+                <p class="text-[.65rem] font-extrabold uppercase tracking-[.12em] text-slate-400">{{ currentAnswer ? 'Answered' : 'Current question' }}</p>
+                <p class="mt-0.5 line-clamp-2 text-sm font-bold leading-5 text-slate-700">{{ question?.text }}</p>
+              </div>
+            </div>
+            <div class="flex shrink-0 flex-wrap items-center gap-2">
+              <button type="button" class="rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-extrabold text-[#5b45f5]" :disabled="submittingAnswer || recording || aiSpeaking" @click="playQuestionVoice(question?.id)">
+                <Volume2 :size="15" class="inline" />{{ aiSpeaking ? 'Speaking…' : 'Hear' }}
+              </button>
+              <button v-if="questionIndex < questions.length - 1" class="rounded-xl bg-violet-50 px-3 py-2 text-xs font-black text-[#5b45f5]" :disabled="submittingAnswer || recording" @click="nextQuestion()">Next</button>
+            </div>
           </div>
-          <p v-if="aiError" class="mx-4 mb-4 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700 sm:mx-6">{{ aiError }}</p>
-          <footer class="flex flex-wrap items-center justify-center gap-2.5 border-t border-violet-100 bg-white/85 px-4 py-4">
-<button class="grid size-11 place-items-center rounded-xl border text-white disabled:opacity-50" :class="recording ? 'border-red-500 bg-red-600' : 'border-violet-200 bg-[#5b45f5]'" :disabled="submittingAnswer || isPaused" :aria-label="recording ? 'Stop recording' : 'Record answer'" @click="toggleMicrophone">
-<Pause v-if="recording" :size="18" /><Mic v-else :size="18" />
-</button>
-<button class="grid size-11 place-items-center rounded-xl border border-violet-200 bg-white text-[#5b45f5]" :aria-label="cameraEnabled ? 'Turn off camera' : 'Turn on camera'" :title="cameraEnabled ? 'Turn off camera' : 'Turn on camera'" @click="toggleCamera">
-<Video :size="18" />
-</button>
-<button class="grid size-11 place-items-center rounded-xl border border-violet-200 bg-white text-[#5b45f5]" @click="togglePause">
-<Play v-if="isPaused" :size="18" />
-<Pause v-else :size="18" />
-</button>
-<span v-if="submittingAnswer" class="text-xs font-bold text-[#5b45f5]">Transcribing answer…</span>
-<button class="btn-primary ml-1" :disabled="submittingAnswer || completingInterview" @click="finish">
-<CircleStop :size="16" />{{ completingInterview ? 'Preparing results…' : 'Finish interview' }}</button>
-</footer>
+
+          <p v-if="aiError" class="mx-4 mb-3 shrink-0 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700 sm:mx-5">{{ aiError }}</p>
+          <footer class="flex shrink-0 flex-wrap items-center justify-center gap-2.5 border-t border-violet-100 bg-white/85 px-4 py-3">
+            <button class="grid size-11 place-items-center rounded-xl border text-white disabled:opacity-50" :class="recording ? 'border-red-500 bg-red-600' : 'border-violet-200 bg-[#5b45f5]'" :disabled="submittingAnswer || isPaused || aiSpeaking" :aria-label="recording ? 'Stop recording' : 'Record answer'" @click="toggleMicrophone">
+              <Pause v-if="recording" :size="18" /><Mic v-else :size="18" />
+            </button>
+            <button class="grid size-11 place-items-center rounded-xl border border-violet-200 bg-white text-[#5b45f5]" :aria-label="cameraEnabled ? 'Turn off camera' : 'Turn on camera'" :title="cameraEnabled ? 'Turn off camera' : 'Turn on camera'" @click="toggleCamera">
+              <Video :size="18" />
+            </button>
+            <button class="grid size-11 place-items-center rounded-xl border border-violet-200 bg-white text-[#5b45f5]" @click="togglePause">
+              <Play v-if="isPaused" :size="18" /><Pause v-else :size="18" />
+            </button>
+            <span v-if="submittingAnswer" class="text-xs font-bold text-[#5b45f5]">Minerva is listening…</span>
+            <span v-else-if="conversation.length && !currentAnswer" class="text-xs font-bold text-emerald-700">Keep the conversation going</span>
+            <button class="btn-primary ml-1" :disabled="submittingAnswer || completingInterview" @click="finish">
+              <CircleStop :size="16" />{{ completingInterview ? 'Preparing results…' : 'Finish interview' }}
+            </button>
+          </footer>
         </section>
 
         <section v-else class="interview-results">
@@ -720,6 +782,13 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.interview-live-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0.5rem;
+}
 .interview-scholarship-select :deep(.base-select-trigger) {
   min-height: 58px;
   border-color: #ddd6fe;

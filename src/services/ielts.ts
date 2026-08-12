@@ -142,9 +142,17 @@ export interface IeltsSpeakingTurnResponse {
   transcript: { text: string; chunks: unknown[]; language?: string }
   examiner: { text: string; nextQuestion?: string; shouldContinue: boolean }
   tokenBalance: number
-  voice?: { dataUrl: string; contentType: string }
+  voice?: { dataUrl: string; contentType: string; text?: string }
 }
 
 export async function submitIeltsSpeakingTurn(form: FormData): Promise<IeltsSpeakingTurnResponse> {
   return apiRequest<IeltsSpeakingTurnResponse>('/api/ielts/speaking/turn', { method: 'POST', body: form })
+}
+
+export async function fetchIeltsSpeakingQuestionVoice(body: {
+  text: string
+  introduction?: string
+  part?: number
+}): Promise<{ voice?: { dataUrl: string; contentType: string; text?: string } | null; reason?: string }> {
+  return apiRequest('/api/ielts/speaking/question-voice', { method: 'POST', body })
 }
