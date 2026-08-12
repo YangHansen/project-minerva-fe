@@ -7,6 +7,7 @@ import { useAppState } from '../composables/useAppState'
 import WorkspaceSidebar from '../components/workspace/WorkspaceSidebar.vue'
 import WorkspaceTopbar from '../components/workspace/WorkspaceTopbar.vue'
 import BaseSelect from '../components/common/BaseSelect.vue'
+import BaseModal from '../components/common/BaseModal.vue'
 
 const router = useRouter()
 const { selectedId, applicationIds, documents, addDocument, uploadDocument, deleteDocument, selectScholarship, toast, getScholarship } = useAppState()
@@ -21,6 +22,7 @@ const newDocumentKind = ref<DocumentKind>('essay')
 const newDocumentFile = ref<File | null>(null)
 const creatingDocument = ref(false)
 const deletingDocumentId = ref<string | null>(null)
+const pendingDeleteDocument = ref<ScholarshipDocument | null>(null)
 const createError = ref('')
 
 const documentTypes: { kind: DocumentKind; label: string; description: string }[] = [
@@ -69,8 +71,13 @@ const editedLabel = (date: string) => {
 }
 
 const openEditor = (doc: ScholarshipDocument) => router.push(`/documents/${doc.id}`)
-const removeDocument = async (doc: ScholarshipDocument) => {
-  if (deletingDocumentId.value || !window.confirm(`Delete "${doc.title}"? This permanently removes its saved versions and AI reviews.`)) return
+const removeDocument = (doc: ScholarshipDocument) => {
+  if (deletingDocumentId.value) return
+  pendingDeleteDocument.value = doc
+}
+const confirmDeleteDocument = async () => {
+  const doc = pendingDeleteDocument.value
+  if (!doc || deletingDocumentId.value) return
   deletingDocumentId.value = doc.id
   try {
     await deleteDocument(doc)
@@ -79,7 +86,12 @@ const removeDocument = async (doc: ScholarshipDocument) => {
     toast(caught instanceof Error ? caught.message : 'Unable to delete the document.', 'info')
   } finally {
     deletingDocumentId.value = null
+    pendingDeleteDocument.value = null
   }
+}
+const cancelDeleteDocument = () => {
+  if (deletingDocumentId.value) return
+  pendingDeleteDocument.value = null
 }
 const openCreateDocument = () => {
   newDocumentTitle.value = ''
@@ -223,6 +235,13 @@ const createDocument = async () => {
 </div>
       </form>
     </div>
+    <BaseModal :open="Boolean(pendingDeleteDocument)" title="Delete document?" @close="cancelDeleteDocument">
+      <p class="mb-6 text-sm leading-6 text-slate-600">Are you sure you want to permanently delete <strong>{{ pendingDeleteDocument?.title }}</strong>? This will remove the document along with its saved versions and AI reviews.</p>
+      <div class="flex items-center justify-end gap-3">
+        <button type="button" class="btn-secondary" @click="cancelDeleteDocument">Cancel</button>
+        <button type="button" class="btn-primary" :disabled="Boolean(deletingDocumentId)" @click="confirmDeleteDocument">{{ deletingDocumentId ? 'Deleting…' : 'Delete document' }}</button>
+      </div>
+    </BaseModal>
   </main>
 </template>
 
