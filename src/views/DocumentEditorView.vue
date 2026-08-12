@@ -36,6 +36,9 @@ const returnToDocuments = async () => {
   const document = documentRecord.value
   if (document) {
     syncEditor()
+    window.clearTimeout(saveTimer)
+    document.status = document.content.replace(/<[^>]+>/g, '').trim() ? 'ready' : 'missing'
+    document.updatedAt = new Date().toISOString()
     await saveDocument(document).catch(() => undefined)
   }
   await router.push('/documents')
@@ -448,11 +451,14 @@ const exportDocument = async (format: 'docx' | 'pdf') => {
 }
 
 const saveReady = () => {
-  if (!documentRecord.value) return
-  documentRecord.value.status = 'ready'
-  documentRecord.value.updatedAt = new Date().toISOString()
+  const document = documentRecord.value
+  if (!document) return
+  syncEditor()
+  window.clearTimeout(saveTimer)
+  document.status = document.content.replace(/<[^>]+>/g, '').trim() ? 'ready' : 'missing'
+  document.updatedAt = new Date().toISOString()
   autosaveState.value = 'Saving...'
-  void saveDocument(documentRecord.value).then(() => { autosaveState.value = 'All changes saved'; toast('Document marked ready.') })
+  void saveDocument(document).then(() => { autosaveState.value = 'All changes saved'; toast('Document marked ready.') })
     .catch(() => { autosaveState.value = 'Save failed - retry on the next edit' })
 }
 
