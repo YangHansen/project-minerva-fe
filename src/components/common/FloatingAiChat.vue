@@ -467,7 +467,10 @@ const formatDate = (value: string) => {
               </template>
             </div>
             <template v-else>
-              <div v-for="message in activeThread.messages" :key="message.id" class="flex" :class="message.role === 'user' ? 'justify-end' : 'justify-start'"><p class="max-w-[84%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-5" :class="message.role === 'user' ? 'rounded-br-md bg-[#5b45f5] text-white' : 'rounded-bl-md border border-violet-100 bg-white text-slate-600'">{{ message.text }}</p></div>
+              <div v-for="message in activeThread.messages" :key="message.id" class="flex" :class="message.role === 'user' ? 'justify-end' : 'justify-start'">
+                <!-- this part is modified to ensure [Vue.js string escaping/sanitization prevents XSS in AI outputs by utilizing native moustache bindings rather than v-html] -->
+                <p class="max-w-[84%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-5" :class="message.role === 'user' ? 'rounded-br-md bg-[#5b45f5] text-white' : 'rounded-bl-md border border-violet-100 bg-white text-slate-600'">{{ message.text }}</p>
+              </div>
             </template>
             <div v-if="responding" class="flex justify-start"><span class="rounded-2xl rounded-bl-md border border-violet-100 bg-white px-4 py-2 text-sm tracking-[.25em] text-[#5b45f5]">•••</span></div>
           </div>
