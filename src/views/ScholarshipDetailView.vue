@@ -90,6 +90,11 @@ const detailSections = computed<DetailSection[]>(() => {
 const toggleSection = (id: string) => {
   openSections.value = openSections.value.includes(id) ? openSections.value.filter((item) => item !== id) : [...openSections.value, id]
 }
+const listValue = (value: unknown) => Array.isArray(value) ? value : value ? [String(value)] : []
+const expandedCells = ref<string[]>([])
+const toggleCell = (key: string) => {
+  expandedCells.value = expandedCells.value.includes(key) ? expandedCells.value.filter((item) => item !== key) : [...expandedCells.value, key]
+}
 const openWorkspace = () => {
   if (!scholarship.value) return
   if (!alreadyAdded.value) startApplication(scholarship.value.id)
@@ -139,7 +144,7 @@ const formatDate = (value: string) => new Intl.DateTimeFormat('en', { day: 'nume
                   <ol v-if="section.items && section.numbered" class="list-decimal space-y-3 pl-6 text-[13px] font-medium leading-6 text-slate-800"><li v-for="item in section.items" :key="item" class="pl-2">{{ item }}</li></ol>
                   <ul v-else-if="section.items" class="list-disc space-y-3 pl-6 text-[13px] font-medium leading-6 text-slate-800"><li v-for="item in section.items" :key="item" class="pl-2 marker:text-[#5b45f5]">{{ item }}</li></ul>
                   <div v-if="section.tableRows" class="overflow-hidden rounded-xl border border-slate-200">
-                    <table class="w-full border-collapse text-left text-[13px]"><tbody><tr v-for="row in section.tableRows" :key="row[0]" class="border-b border-slate-200 last:border-b-0"><th class="w-1/3 bg-slate-50 px-4 py-3 font-bold text-[#17136b]">{{ row[0] }}</th><td class="px-4 py-3 font-medium text-slate-700">{{ row[1] }}</td></tr></tbody></table>
+                    <table class="w-full border-collapse text-left text-[13px]"><tbody><tr v-for="row in section.tableRows" :key="row[0]" class="border-b border-slate-200 last:border-b-0"><th class="w-1/3 bg-slate-50 px-4 py-3 font-bold text-[#17136b]">{{ row[0] }}</th><td class="px-4 py-3 font-medium text-slate-700"><template v-if="Array.isArray(row[1])"><div class="flex flex-wrap gap-1.5"><span v-for="value in expandedCells.includes(row[0]) ? listValue(row[1]) : listValue(row[1]).slice(0, 3)" :key="value" class="rounded-full bg-slate-100 px-2.5 py-1 text-[.72rem] font-bold text-slate-600">{{ value }}</span><button v-if="listValue(row[1]).length > 3" type="button" class="rounded-full border border-violet-200 px-2.5 py-1 text-[.72rem] font-bold text-[#5b45f5]" @click="toggleCell(row[0])">{{ expandedCells.includes(row[0]) ? 'Show less' : `+${listValue(row[1]).length - 3} more` }}</button></div></template><template v-else>{{ row[1] }}</template></td></tr></tbody></table>
                   </div>
                 </div>
               </Transition>

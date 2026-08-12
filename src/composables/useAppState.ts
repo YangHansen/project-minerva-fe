@@ -152,7 +152,7 @@ const scholarships = computed(() => {
   const byId = new Map(scholarshipCatalog.value.map((item) => [item.id, true]))
   return [...scholarshipCatalog.value, ...staticScholarships.filter((item) => !byId.has(item.id))]
 })
-const getScholarship = (id: string) => scholarships.value.find((item) => item.id === id)
+const getScholarship = (id: string) => scholarships.value.find((item) => item.id === id || item.databaseId === id)
 const mentors = ref<Mentor[]>([])
 const mentorCatalogError = ref('')
 const remoteMentorsLoaded = ref(false)

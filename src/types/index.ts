@@ -21,7 +21,7 @@ export interface UserProfile {
 }
 
 export interface Scholarship {
-  id: string; name: string; provider: string; country: string; university: string
+  id: string; databaseId?: string; name: string; provider: string; country: string; university: string
   program: string; educationLevel: string; fieldOfStudy: string; fundingType: string
   scholarshipType: string; eligibilitySummary: string; deadline: string
   applicationUrl: string; requiredDocuments: string[]; matchPercentage: number; featured: boolean

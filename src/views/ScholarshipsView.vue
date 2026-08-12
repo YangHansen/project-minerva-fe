@@ -31,18 +31,19 @@ onMounted(async () => {
     loading.value = false
   }
 })
+const majorList = (value: string | string[]) => Array.isArray(value) ? value : value ? [value] : []
 const countries = computed(() => [...new Set(scholarships.value.map((item) => item.country))].sort())
 const levels = computed(() => [...new Set(scholarships.value.map((item) => item.educationLevel))].sort())
-const majors = computed(() => [...new Set(scholarships.value.map((item) => item.fieldOfStudy).filter((item) => item !== 'All fields'))].sort())
+const majors = computed(() => [...new Set(scholarships.value.flatMap((item) => majorList(item.fieldOfStudy)).filter((item) => item !== 'All fields'))].sort())
 const fundings = computed(() => [...new Set(scholarships.value.map((item) => item.fundingType))].sort())
 const firstSetup = computed(() => Boolean(route.query.recommended) || Boolean(session.value && applicationIds.value.length === 0))
 const showRecommendationHighlight = computed(() => Boolean(route.query.recommended))
 const isFiltered = computed(() => Boolean(query.value || country.value || level.value || major.value || funding.value))
 const showChatRecommendations = computed(() => Boolean(recommendedScholarshipIds.value.length && !isFiltered.value && sort.value === 'match'))
 const results = computed(() => scholarships.value.filter((item) => {
-  const haystack = `${item.name} ${item.provider} ${item.country} ${item.fieldOfStudy} ${item.program}`.toLowerCase()
+  const haystack = `${item.name} ${item.provider} ${item.country} ${majorList(item.fieldOfStudy).join(' ')} ${item.program}`.toLowerCase()
   const matchesQuery = haystack.includes(query.value.trim().toLowerCase())
-  const matchesMajor = !major.value || item.fieldOfStudy === major.value || item.fieldOfStudy === 'All fields'
+  const matchesMajor = !major.value || majorList(item.fieldOfStudy).includes(major.value) || majorList(item.fieldOfStudy).includes('All fields')
   return matchesQuery && matchesMajor && (!country.value || item.country === country.value) && (!level.value || item.educationLevel === level.value) && (!funding.value || item.fundingType === funding.value)
 }).sort((a, b) => {
   if (showChatRecommendations.value) {
