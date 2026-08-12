@@ -182,7 +182,7 @@ const totalQuestions = computed(() => {
 const combinedStrengths = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.strengths || []))].slice(0, 5))
 const combinedImprovements = computed(() => [...new Set(aiEvaluations.value.flatMap((item) => item.improvements || []))].slice(0, 5))
 
-const formatHistoryDate = (value: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+//const formatHistoryDate = (value: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 const loadTranscriptionHistory = async () => {
   transcriptionHistoryLoading.value = true
   transcriptionHistoryError.value = ''
@@ -516,6 +516,7 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
   </div>
 </BaseModal>
 
+          <!--
           <section class="mt-5 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
 <div class="flex flex-wrap items-center justify-between gap-3">
 <div>
@@ -536,6 +537,7 @@ onUnmounted(() => { window.clearInterval(timer); speechSynthesis.cancel(); micSt
 </details>
 </div>
 </section>
+          -->
           <section class="mt-5 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
 <div class="flex flex-wrap items-center justify-between gap-4">
 <div>
