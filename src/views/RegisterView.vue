@@ -45,8 +45,8 @@ const submit = async () => {
 </script>
 
 <template>
-  <main class="grid min-h-[calc(100vh-72px)] lg:grid-cols-2">
-    <section class="hidden bg-gradient-to-br from-[#17136b] via-[#30209a] to-[#5b45f5] p-14 text-white lg:flex lg:flex-col lg:justify-between">
+  <main class="grid h-dvh max-h-dvh overflow-hidden lg:grid-cols-2">
+    <section class="hidden h-full min-h-0 bg-gradient-to-br from-[#17136b] via-[#30209a] to-[#5b45f5] p-14 text-white lg:flex lg:flex-col lg:justify-between">
       <RouterLink to="/" aria-label="Go to Minerva homepage" class="w-fit rounded-xl focus:outline-none focus:ring-2 focus:ring-white">
         <img src="/minerva-logo.png" alt="Minerva" class="h-20 w-64 rounded-xl bg-white object-cover" />
       </RouterLink>
@@ -59,7 +59,7 @@ const submit = async () => {
       <p class="text-xs text-violet-300">Your account keeps applications and preparation work together.</p>
     </section>
 
-    <section class="grid place-items-center p-6 py-12 sm:p-10 lg:p-14">
+    <section class="grid min-h-0 place-items-center overflow-y-auto p-6 py-8 sm:p-10 lg:p-12">
       <form class="w-full max-w-md" @submit.prevent="submit">
         <p class="eyebrow">Start your journey</p>
         <h1 class="mt-5 text-4xl font-extrabold tracking-tight text-[#17136b]">Create your account</h1>

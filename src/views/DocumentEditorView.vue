@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AlertCircle, AlignLeft, ArrowLeft, ArrowRight, Bold, Check, ChevronDown, Download, Edit3, Eraser, Highlighter, History, Italic, Link2, List, ListOrdered, LoaderCircle, MessageSquare, Plus, Redo2, Sparkles, Strikethrough, Trash2, Underline, Undo2 } from 'lucide-vue-next'
+import { AlertCircle, AlignCenter, AlignLeft, AlignRight, ArrowLeft, ArrowRight, Bold, Check, ChevronDown, Download, Edit3, Eraser, Highlighter, History, Italic, Link2, List, ListOrdered, LoaderCircle, MessageSquare, Plus, Redo2, Sparkles, Strikethrough, Trash2, Underline, Undo2 } from 'lucide-vue-next'
 import type { DocumentReview, DocumentSuggestion } from '../types'
 import { ApiError, apiRequest } from '../api'
 import { chooseRewriteCandidate } from '../lib/documentRewrite'
@@ -631,6 +631,27 @@ const command = (name: string, value?: string) => {
   rememberEditorSelection()
   syncEditor()
 }
+const setParagraphAlign = (align: 'left' | 'center' | 'right') => {
+  restoreEditorSelection()
+  const root = editor.value
+  const selection = window.getSelection()
+  if (!root || !selection?.rangeCount) return
+  const range = selection.getRangeAt(0)
+  if (!root.contains(range.commonAncestorContainer)) return
+
+  const commandName = align === 'left' ? 'justifyLeft' : align === 'center' ? 'justifyCenter' : 'justifyRight'
+  document.execCommand(commandName, false)
+
+  let node: Node | null = range.commonAncestorContainer
+  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement
+  const block = (node as HTMLElement | null)?.closest?.('p, h1, h2, h3, h4, h5, h6, li, div')
+  if (block && root.contains(block) && block !== root) {
+    ;(block as HTMLElement).style.textAlign = align
+  }
+
+  rememberEditorSelection()
+  syncEditor()
+}
 const chooseBlock = (event: Event) => command('formatBlock', (event.target as HTMLSelectElement).value)
 const chooseFont = (event: Event) => command('fontName', (event.target as HTMLSelectElement).value)
 const addLink = () => { const url = window.prompt('Paste a link'); if (url) command('createLink', url) }
@@ -817,21 +838,24 @@ const applyRewriteAcrossPages = async (originalText: string, replacementText: st
   return true
 }
 
-const liveEditorSelectionRange = () => {
+const liveEditorSelectionRange = (allowCollapsed = true) => {
   const root = editor.value
   const selection = window.getSelection()
   if (!root || !selection?.rangeCount) return null
   const range = selection.getRangeAt(0)
-  return !range.collapsed && root.contains(range.commonAncestorContainer) ? range.cloneRange() : null
+  if (!root.contains(range.commonAncestorContainer)) return null
+  if (!allowCollapsed && range.collapsed) return null
+  return range.cloneRange()
 }
 
-const editorSelectionRange = () => {
+const editorSelectionRange = (allowCollapsed = true) => {
   const root = editor.value
   if (!root) return null
-  const savedRange = savedEditorRange && !savedEditorRange.collapsed && root.contains(savedEditorRange.commonAncestorContainer)
+  const savedRange = savedEditorRange && root.contains(savedEditorRange.commonAncestorContainer)
+    && (allowCollapsed || !savedEditorRange.collapsed)
     ? savedEditorRange.cloneRange()
     : null
-  return preferEditorSelection(liveEditorSelectionRange(), savedRange)
+  return preferEditorSelection(liveEditorSelectionRange(allowCollapsed), savedRange)
 }
 
 const rememberEditorSelection = () => {
@@ -860,8 +884,8 @@ const unwrapHighlights = (highlights: HTMLElement[]) => {
 
 const applyTextHighlight = () => {
   const root = editor.value
-  const range = editorSelectionRange()
-  if (!root || !range) {
+  const range = editorSelectionRange(false)
+  if (!root || !range || range.collapsed) {
     toast('Select text on the page before highlighting.', 'info')
     return
   }
@@ -909,7 +933,7 @@ const removeHighlights = async () => {
   const root = editor.value
   if (!doc || !root) return
 
-  const range = editorSelectionRange()
+  const range = editorSelectionRange(false)
   const allHighlights = [...root.querySelectorAll<HTMLElement>('mark')]
   const highlights = range ? highlightsInRange(root, range) : allHighlights
   if (!highlights.length) {
@@ -1228,7 +1252,7 @@ onBeforeUnmount(() => {
       <header class="editor-topbar">
         <button type="button" class="editor-back-button" title="Back to documents" aria-label="Back to documents" @click="returnToDocuments"><ArrowLeft :size="18" /><span>Documents</span></button>
         <div class="editor-heading"><p class="workspace-kicker">AI writing editor</p><div><input ref="titleInput" v-model="documentRecord.title" class="editor-heading_input" :size="Math.max(5, Math.min(32, documentRecord.title.length + 1))" aria-label="Document title" @input="syncEditor" @blur="syncEditor" @keydown.enter.prevent="titleInput?.blur()" /><button type="button" class="editor-title-edit" aria-label="Edit document title" @click="editTitle"><Edit3 :size="17" /></button></div><p><span><Check :size="15" />{{ autosaveState }}</span><i />{{ modifiedLabel }}<i /><select v-model="selectedVersion" aria-label="Document version" @change="restoreVersion"><option value="current">Current draft</option><option v-for="version in documentRecord.versions" :key="version.id" :value="version.id">{{ version.label }}</option></select><ChevronDown :size="14" /></p></div>
-        <div class="editor-head-actions"><button class="btn-primary" @click="saveReady">Save</button><button class="btn-secondary" :disabled="versionSaving" @click="createVersion">{{ versionSaving ? 'Saving version...' : 'Create new version' }}</button><div class="export-menu"><button type="button" class="btn-secondary export-trigger" :disabled="Boolean(exporting)" aria-haspopup="menu" :aria-expanded="exportMenuOpen" @click="exportMenuOpen = !exportMenuOpen"><Download :size="16" />{{ exporting ? `Exporting ${exporting.toUpperCase()}...` : 'Export' }}<ChevronDown :size="14" /></button><div v-if="exportMenuOpen" class="export-popover" role="menu"><button type="button" role="menuitem" @click="exportDocument('docx')"><strong>Word document</strong><small>.docx - editable</small></button><button type="button" role="menuitem" @click="exportDocument('pdf')"><strong>PDF document</strong><small>.pdf - ready to share</small></button></div></div></div>
+        <div class="editor-head-actions"><button class="btn-primary" @click="saveReady">Save</button><button class="btn-secondary" :disabled="versionSaving" @click="createVersion">{{ versionSaving ? 'Saving version...' : 'Create new version' }}</button><div class="export-menu"><button type="button" class="btn-secondary export-trigger" :disabled="Boolean(exporting)" aria-haspopup="menu" :aria-expanded="exportMenuOpen" @click="exportMenuOpen = !exportMenuOpen"><Download :size="16" />{{ exporting ? `Downloading ${exporting.toUpperCase()}...` : 'Download' }}<ChevronDown :size="14" /></button><div v-if="exportMenuOpen" class="export-popover" role="menu"><button type="button" role="menuitem" @click="exportDocument('docx')"><strong>Word document</strong><small>.docx - editable</small></button><button type="button" role="menuitem" @click="exportDocument('pdf')"><strong>PDF document</strong><small>.pdf - ready to share</small></button></div></div></div>
       </header>
 
       <div class="editor-layout">
@@ -1240,7 +1264,7 @@ onBeforeUnmount(() => {
           <div class="rich-toolbar" @mousedown="preserveToolbarSelection">
             <select v-model="fontFamily" class="font-family-select" aria-label="Font family" @change="chooseFont"><option>Calibri</option><option>Times New Roman</option><option>Arial</option><option>Cambria</option><option>Georgia</option><option>Garamond</option><option>Verdana</option><option>Courier New</option></select><i /><select aria-label="Text style" @change="chooseBlock"><option value="p">Paragraph</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option></select><i />
             <button aria-label="Bold" @click="command('bold')"><Bold :size="18" /></button><button aria-label="Italic" @click="command('italic')"><Italic :size="18" /></button><button aria-label="Underline" @click="command('underline')"><Underline :size="18" /></button><button aria-label="Strikethrough" @click="command('strikeThrough')"><Strikethrough :size="18" /></button><i />
-            <button aria-label="Align left" @click="command('justifyLeft')"><AlignLeft :size="18" /></button><button aria-label="Bulleted list" @click="command('insertUnorderedList')"><List :size="18" /></button><button aria-label="Numbered list" @click="command('insertOrderedList')"><ListOrdered :size="18" /></button><button aria-label="Add link" @click="addLink"><Link2 :size="18" /></button><button aria-label="Add comment"><MessageSquare :size="18" /></button><i />
+            <button aria-label="Align left" @click="setParagraphAlign('left')"><AlignLeft :size="18" /></button><button aria-label="Align center" @click="setParagraphAlign('center')"><AlignCenter :size="18" /></button><button aria-label="Align right" @click="setParagraphAlign('right')"><AlignRight :size="18" /></button><button aria-label="Bulleted list" @click="command('insertUnorderedList')"><List :size="18" /></button><button aria-label="Numbered list" @click="command('insertOrderedList')"><ListOrdered :size="18" /></button><button aria-label="Add link" @click="addLink"><Link2 :size="18" /></button><button aria-label="Add comment"><MessageSquare :size="18" /></button><i />
             <div class="highlight-tools"><button type="button" aria-label="Highlight selected text" title="Highlight selected text" :style="{ color: highlightColorHex }" @mousedown.prevent @click="applyTextHighlight"><Highlighter :size="18" /></button><select v-model="highlightColor" aria-label="Highlight color" title="Highlight color"><option value="yellow">Yellow</option><option value="green">Green</option><option value="blue">Blue</option><option value="pink">Pink</option><option value="purple">Purple</option></select><button v-if="hasActiveHighlights" type="button" aria-label="Remove highlights" title="Remove highlights" @mousedown.prevent @click="removeHighlights"><Eraser :size="18" /></button></div><i />
             <button aria-label="Undo" @click="command('undo')"><Undo2 :size="18" /></button><button aria-label="Redo" @click="command('redo')"><Redo2 :size="18" /></button>
           </div>
