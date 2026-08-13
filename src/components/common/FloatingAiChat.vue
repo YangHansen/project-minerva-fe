@@ -25,7 +25,7 @@ interface ChatThread {
 
 type UnknownRecord = Record<string, unknown>
 
-const { selectedId, applicationIds, backendApplicationIds, savedIds, getScholarship, selectScholarship, session, setRecommendedScholarships, syncAiTokenBalance } = useAppState()
+const { selectedId, applicationIds, backendApplicationIds, savedIds, getScholarship, selectScholarship, session, setRecommendedScholarships, syncAiTokenBalance, loadScholarshipCatalog } = useAppState()
 const open = ref(false)
 const showHistory = ref(false)
 const input = ref('')
@@ -346,9 +346,18 @@ const findRecommendations = async () => {
     })
     if (!isCurrentAccount(generation)) return
     const matches = payload.scholarshipIds.map((id) => getScholarship(id)).filter((item): item is Scholarship => Boolean(item))
-    recommendations.value = matches
-    seenRecommendationIds.value = [...new Set([...seenRecommendationIds.value, ...matches.map((item) => item.id)])]
-    setRecommendedScholarships(matches.map((item) => item.id))
+    let resolved = matches
+    if (!resolved.length) {
+      await loadScholarshipCatalog()
+      resolved = payload.scholarshipIds.map((id) => getScholarship(id)).filter((item): item is Scholarship => Boolean(item))
+    }
+    if (!resolved.length) {
+      error.value = 'No matching scholarships were found in your catalog. Refresh Discover and try again.'
+      return
+    }
+    recommendations.value = resolved
+    seenRecommendationIds.value = [...new Set([...seenRecommendationIds.value, ...resolved.map((item) => item.id)])]
+    setRecommendedScholarships(resolved.map((item) => item.id))
     remainingToday.value = payload.remainingToday
     recommendationStage.value = 'results'
     syncAiTokenBalance(payload)

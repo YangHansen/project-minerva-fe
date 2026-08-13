@@ -672,46 +672,23 @@ onBeforeUnmount(() => {
             </div>
           </header>
 
-          <div class="grid min-h-0 flex-1 gap-4 overflow-hidden p-4 lg:grid-cols-[minmax(240px,0.9fr)_minmax(0,1.2fr)] lg:p-5">
-            <div class="grid min-h-0 gap-3 sm:grid-cols-2 lg:grid-cols-1 lg:overflow-hidden">
-              <div class="relative grid min-h-[160px] place-items-center overflow-hidden rounded-2xl border border-violet-200 bg-[radial-gradient(circle_at_center,#fff_0%,#f3f0ff_58%,#ebe7ff_100%)] lg:min-h-0 lg:flex-1">
-                <video v-if="cameraEnabled" ref="cameraVideo" autoplay muted playsinline class="absolute inset-0 size-full object-cover [transform:scaleX(-1)]" />
-                <span class="absolute left-3 top-3 z-10 rounded-full bg-white px-2.5 py-1 text-[.62rem] font-black text-[#5b45f5]">Your camera</span>
-                <div v-if="!cameraEnabled" class="h-24 w-20 rounded-[48%_48%_44%_44%] border-2 border-[#8b7cf6] bg-white/70" />
-                <button v-if="!cameraEnabled" type="button" class="absolute inset-0 grid place-items-center" @click="startCamera"><span class="rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-[#5b45f5] shadow-sm">Turn on camera</span></button>
-                <p v-if="cameraError" class="absolute bottom-8 right-3 z-10 max-w-[200px] rounded-lg bg-white/90 px-2 py-1.5 text-right text-[.62rem] font-bold leading-4 text-rose-600">{{ cameraError }}</p>
-              </div>
-              <div class="relative flex min-h-[160px] flex-col items-center justify-center overflow-hidden rounded-2xl border border-violet-200 bg-[radial-gradient(circle_at_center,#fff_0%,#f5f2ff_55%,#ebe7ff_100%)] p-3 text-center lg:min-h-0 lg:flex-1">
-                <img src="/ai-interviewer.gif" alt="Animated Minerva AI interviewer" class="h-28 max-w-full object-contain mix-blend-multiply drop-shadow-[0_12px_18px_rgba(64,48,180,.2)] transition sm:h-32" :class="aiSpeaking ? 'scale-105' : ''" />
-                <div class="mt-1 flex items-center justify-center gap-2">
-                  <span class="text-sm font-black">Minerva</span>
-                  <span v-if="aiSpeaking" class="rounded-full bg-violet-100 px-2 py-0.5 text-[.6rem] font-black uppercase tracking-wide text-[#5b45f5]">Speaking</span>
-                </div>
-                <p v-if="voiceNotice" class="mt-1 max-w-xs text-[11px] font-bold leading-4 text-amber-700">{{ voiceNotice }}</p>
-                <button type="button" class="mt-2 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-[11px] font-extrabold text-[#5b45f5]" :disabled="!latestVoice" @click="playKokoroVoice(latestVoice || undefined)"><Volume2 :size="14" class="inline" /> Replay</button>
-              </div>
+          <div class="grid min-h-0 shrink-0 grid-cols-1 gap-3 overflow-hidden p-4 sm:grid-cols-2 lg:gap-4 lg:p-5">
+            <div class="relative grid min-h-[200px] place-items-center overflow-hidden rounded-2xl border border-violet-200 bg-[radial-gradient(circle_at_center,#fff_0%,#f3f0ff_58%,#ebe7ff_100%)] sm:min-h-[240px] lg:min-h-[280px]">
+              <video v-if="cameraEnabled" ref="cameraVideo" autoplay muted playsinline class="absolute inset-0 size-full object-cover [transform:scaleX(-1)]" />
+              <span class="absolute left-3 top-3 z-10 rounded-full bg-white px-2.5 py-1 text-[.62rem] font-black text-[#5b45f5]">Your camera</span>
+              <div v-if="!cameraEnabled" class="h-24 w-20 rounded-[48%_48%_44%_44%] border-2 border-[#8b7cf6] bg-white/70" />
+              <button v-if="!cameraEnabled" type="button" class="absolute inset-0 grid place-items-center" @click="startCamera"><span class="rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-[#5b45f5] shadow-sm">Turn on camera</span></button>
+              <p v-if="cameraError" class="absolute bottom-8 right-3 z-10 max-w-[200px] rounded-lg bg-white/90 px-2 py-1.5 text-right text-[.62rem] font-bold leading-4 text-rose-600">{{ cameraError }}</p>
             </div>
 
-            <div data-tour="interview-conversation" class="flex min-h-[220px] flex-col overflow-hidden rounded-2xl border border-violet-100 bg-white lg:min-h-0">
-              <div class="flex shrink-0 items-center justify-between gap-3 border-b border-violet-50 px-4 py-2.5">
-                <p class="text-[.68rem] font-extrabold uppercase tracking-[.14em] text-slate-400">Conversation</p>
-                <p v-if="currentAnswer" class="text-[11px] font-bold text-emerald-700">Clarity {{ currentAnswer.evaluation.clarity }} · Relevance {{ currentAnswer.evaluation.relevance }} · Structure {{ currentAnswer.evaluation.structure }}</p>
+            <div class="relative flex min-h-[200px] flex-col items-center justify-center overflow-hidden rounded-2xl border border-violet-200 bg-[radial-gradient(circle_at_center,#fff_0%,#f5f2ff_55%,#ebe7ff_100%)] p-3 text-center sm:min-h-[240px] lg:min-h-[280px]">
+              <img src="/ai-interviewer.gif" alt="Animated Minerva AI interviewer" class="h-28 max-w-full object-contain mix-blend-multiply drop-shadow-[0_12px_18px_rgba(64,48,180,.2)] transition sm:h-32 lg:h-36" :class="aiSpeaking ? 'scale-105' : ''" />
+              <div class="mt-1 flex items-center justify-center gap-2">
+                <span class="text-sm font-black">Minerva</span>
+                <span v-if="aiSpeaking" class="rounded-full bg-violet-100 px-2 py-0.5 text-[.6rem] font-black uppercase tracking-wide text-[#5b45f5]">Speaking</span>
               </div>
-              <div ref="conversationPanel" class="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3">
-                <p v-if="!conversation.length" class="rounded-xl bg-violet-50/70 px-3 py-3 text-sm leading-6 text-slate-600">
-                  <strong class="text-[#5b45f5]">Minerva:</strong> {{ question?.text || 'Your first question will appear here.' }}
-                </p>
-                <template v-else>
-                  <div v-for="(turn, index) in conversation" :key="`${index}-${turn.question.slice(0, 24)}`" class="space-y-2">
-                    <p class="rounded-xl bg-violet-50 px-3 py-2 text-sm leading-6 text-slate-700"><strong class="text-[#5b45f5]">Minerva:</strong> {{ turn.question }}</p>
-                    <p class="rounded-xl bg-emerald-50 px-3 py-2 text-sm leading-6 text-slate-700"><strong class="text-emerald-700">You:</strong> {{ turn.answer }}</p>
-                    <p v-if="turn.reply" class="rounded-xl bg-violet-50 px-3 py-2 text-sm leading-6 text-slate-700"><strong class="text-[#5b45f5]">Minerva:</strong> {{ turn.reply }}</p>
-                  </div>
-                </template>
-                <p v-if="conversation.length && question && !currentAnswer" class="rounded-xl border border-dashed border-violet-200 bg-white px-3 py-2 text-sm leading-6 text-slate-700">
-                  <strong class="text-[#5b45f5]">Minerva:</strong> {{ question.text }}
-                </p>
-              </div>
+              <p v-if="voiceNotice" class="mt-1 max-w-xs text-[11px] font-bold leading-4 text-amber-700">{{ voiceNotice }}</p>
+              <button type="button" class="mt-2 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-[11px] font-extrabold text-[#5b45f5]" :disabled="!latestVoice" @click="playKokoroVoice(latestVoice || undefined)"><Volume2 :size="14" class="inline" /> Replay</button>
             </div>
           </div>
 
@@ -728,6 +705,28 @@ onBeforeUnmount(() => {
                 <Volume2 :size="15" class="inline" />{{ aiSpeaking ? 'Speaking…' : 'Hear' }}
               </button>
               <button v-if="questionIndex < questions.length - 1" class="rounded-xl bg-violet-50 px-3 py-2 text-xs font-black text-[#5b45f5]" :disabled="submittingAnswer || recording" @click="nextQuestion()">Next</button>
+            </div>
+          </div>
+
+          <div data-tour="interview-conversation" class="mx-4 mb-3 flex h-[min(26dvh,230px)] min-h-[150px] shrink-0 flex-col overflow-hidden rounded-2xl border border-violet-100 bg-white sm:mx-5">
+            <div class="flex shrink-0 items-center justify-between gap-3 border-b border-violet-50 px-4 py-2.5">
+              <p class="text-[.68rem] font-extrabold uppercase tracking-[.14em] text-slate-400">Conversation</p>
+              <p v-if="currentAnswer" class="text-[11px] font-bold text-emerald-700">Clarity {{ currentAnswer.evaluation.clarity }} · Relevance {{ currentAnswer.evaluation.relevance }} · Structure {{ currentAnswer.evaluation.structure }}</p>
+            </div>
+            <div ref="conversationPanel" class="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3">
+              <p v-if="!conversation.length" class="rounded-xl bg-violet-50/70 px-3 py-3 text-sm leading-6 text-slate-600">
+                <strong class="text-[#5b45f5]">Minerva:</strong> {{ question?.text || 'Your first question will appear here.' }}
+              </p>
+              <template v-else>
+                <div v-for="(turn, index) in conversation" :key="`${index}-${turn.question.slice(0, 24)}`" class="space-y-2">
+                  <p class="rounded-xl bg-violet-50 px-3 py-2 text-sm leading-6 text-slate-700"><strong class="text-[#5b45f5]">Minerva:</strong> {{ turn.question }}</p>
+                  <p class="rounded-xl bg-emerald-50 px-3 py-2 text-sm leading-6 text-slate-700"><strong class="text-emerald-700">You:</strong> {{ turn.answer }}</p>
+                  <p v-if="turn.reply" class="rounded-xl bg-violet-50 px-3 py-2 text-sm leading-6 text-slate-700"><strong class="text-[#5b45f5]">Minerva:</strong> {{ turn.reply }}</p>
+                </div>
+              </template>
+              <p v-if="conversation.length && question && !currentAnswer" class="rounded-xl border border-dashed border-violet-200 bg-white px-3 py-2 text-sm leading-6 text-slate-700">
+                <strong class="text-[#5b45f5]">Minerva:</strong> {{ question.text }}
+              </p>
             </div>
           </div>
 
